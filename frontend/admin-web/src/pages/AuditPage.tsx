@@ -9,6 +9,8 @@ import { EmptyState, ErrorLine, Loader, Pagination, SectionHead, formatDateTime,
 const ACTION_LABEL: Record<string, string> = {
   ADMIN_ACCESS: 'Panel erişimi',
   ADMIN_USER_STATUS_CHANGE: 'Hesap durumu değişti',
+  ADMIN_USER_UNLOCK: 'Hesap kilidi açıldı',
+  ADMIN_USER_EXPORT: 'Kullanıcılar dışa aktarıldı',
   ADMIN_REPORT_RESOLVE: 'Şikâyet karara bağlandı',
   ACCOUNT_DELETED: 'Hesap silindi',
   DIET_PROGRAM_CREATED: 'Diyet programı oluşturuldu',

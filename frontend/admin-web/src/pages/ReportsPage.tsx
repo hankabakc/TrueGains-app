@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { reportsApi } from '../api/admin';
 import { useResource } from '../hooks/useResource';
 import type { AdminReportRow, ReportStatus } from '../api/types';
@@ -27,6 +28,7 @@ export default function ReportsPage() {
   const [busy, setBusy] = useState(false);
   const [suspend, setSuspend] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const navigate = useNavigate();
 
   const reports = useResource(
     () => reportsApi.search({ status: status || undefined, page, size: 20 }),
@@ -160,6 +162,11 @@ export default function ReportsPage() {
                 </>
               )}
             </dl>
+
+            {/* KR10 → A: hesap işlemleri (pasifleştirme, kilit açma) tek ekranda kalsın. */}
+            <button className="ghost" onClick={() => navigate(`/users?id=${active.reportedUserId}`)}>
+              Kullanıcı ayrıntısı
+            </button>
 
             <SectionHead title="Geçmiş şikâyetler" />
             <ReportHistory userId={active.reportedUserId} currentId={active.id} />

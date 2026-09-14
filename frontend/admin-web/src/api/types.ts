@@ -84,6 +84,12 @@ export interface AdminUserDetail extends AdminUserRow {
   activeSubscriptions: number;
 }
 
+export interface AdminUserExport {
+  fileName: string;
+  rowCount: number;
+  csv: string;
+}
+
 export interface AdminRevenue {
   revenueToday: number;
   revenue7d: number;

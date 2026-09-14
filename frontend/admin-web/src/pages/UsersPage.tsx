@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { usersApi } from '../api/admin';
 import { useResource } from '../hooks/useResource';
 import { SEARCH_DEBOUNCE_MS, useDebouncedValue } from '../hooks/useDebouncedValue';
-import type { AdminUserDetail, AdminUserRow, UserRole } from '../api/types';
+import type { AdminUserDetail, UserRole } from '../api/types';
 import { Badge, EmptyState, ErrorLine, Loader, Pagination, SectionHead, formatDateTime } from '../components/Ui';
 
 const ROLE_LABEL: Record<UserRole, string> = {
@@ -16,6 +17,19 @@ const ROLES = [
   ...(Object.keys(ROLE_LABEL) as UserRole[]).map((value) => ({ value, label: ROLE_LABEL[value] })),
 ];
 
+/**
+ * CSV sunucudan zarfın içinde metin olarak geliyor; dosyayı tarayıcı oluşturur. BOM: Excel
+ * Türkçe harfleri doğru okusun.
+ */
+function saveCsv(fileName: string, csv: string) {
+  const url = URL.createObjectURL(new Blob(['\uFEFF', csv], { type: 'text/csv;charset=utf-8' }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
 export default function UsersPage() {
   const [role, setRole] = useState('');
   const [query, setQuery] = useState('');
@@ -26,6 +40,10 @@ export default function UsersPage() {
   const [busy, setBusy] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const linkedUserId = Number(searchParams.get('id'));
 
   const users = useResource(
     () =>
@@ -39,14 +57,29 @@ export default function UsersPage() {
     [role, debouncedQuery, activeFilter, page],
   );
 
-  async function openDetail(row: AdminUserRow) {
+  async function openDetail(id: number) {
     setDetailError(null);
     setActionError(null);
     try {
-      setSelected(await usersApi.detail(row.id));
+      setSelected(await usersApi.detail(id));
     } catch (e) {
       // Ayrıntı açılmazsa tıklama hiçbir şey yapmamış gibi görünür.
       setDetailError(e instanceof Error ? e.message : 'Kullanıcı ayrıntısı alınamadı.');
+    }
+  }
+
+  // Şikâyetler ekranından gelinirse (KR10 → A) o kullanıcının çekmecesi açık gelir.
+  useEffect(() => {
+    if (Number.isInteger(linkedUserId) && linkedUserId > 0) {
+      void openDetail(linkedUserId);
+    }
+  }, [linkedUserId]);
+
+  function closeDetail() {
+    setSelected(null);
+    // Adres temizlenmezse sayfa yenilenince çekmece yeniden açılır.
+    if (searchParams.has('id')) {
+      setSearchParams({}, { replace: true });
     }
   }
 
@@ -61,6 +94,35 @@ export default function UsersPage() {
       setActionError(e instanceof Error ? e.message : 'Hesap durumu değiştirilemedi.');
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function unlock(user: AdminUserDetail) {
+    setBusy(true);
+    setActionError(null);
+    try {
+      setSelected(await usersApi.unlock(user.id));
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : 'Hesap kilidi açılamadı.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function exportCsv() {
+    setExporting(true);
+    setExportError(null);
+    try {
+      const result = await usersApi.exportCsv({
+        role: role || undefined,
+        query: debouncedQuery || undefined,
+        active: activeFilter === '' ? undefined : activeFilter === 'true',
+      });
+      saveCsv(result.fileName, result.csv);
+    } catch (e) {
+      setExportError(e instanceof Error ? e.message : 'Dışa aktarma yapılamadı.');
+    } finally {
+      setExporting(false);
     }
   }
 
@@ -101,13 +163,17 @@ export default function UsersPage() {
           <option value="true">Yalnızca aktif</option>
           <option value="false">Yalnızca pasif</option>
         </select>
+        <button className="ghost" disabled={exporting} onClick={exportCsv}>
+          {exporting ? 'Hazırlanıyor…' : 'CSV indir'}
+        </button>
       </div>
 
       {/* Isimler AES sifreli oldugu icin SQL'de aranamiyor; arama e-posta uzerinden. */}
-      <p className="muted hint-line">Arama e-posta üzerinden yapılır; isimler şifreli saklandığı için aranamaz.</p>
+      <p className="muted hint-line">Arama e-posta üzerinden yapılır; isimler şifreli saklandığı için aranamaz. CSV ekrandaki süzgeçlerle iner ve denetim defterine yazılır.</p>
 
       <ErrorLine text={users.error} />
       <ErrorLine text={detailError} />
+      <ErrorLine text={exportError} />
       <Loader show={users.loading && !users.data} />
 
       {users.data && users.data.content.length === 0 && <EmptyState text="Kayıt bulunamadı." />}
@@ -128,7 +194,7 @@ export default function UsersPage() {
               </thead>
               <tbody>
                 {users.data.content.map((u) => (
-                  <tr key={u.id} onClick={() => openDetail(u)} className="clickable">
+                  <tr key={u.id} onClick={() => openDetail(u.id)} className="clickable">
                     <td>{u.email}</td>
                     <td>{u.fullName ?? '—'}</td>
                     <td>{ROLE_LABEL[u.role] ?? u.role}</td>
@@ -154,7 +220,7 @@ export default function UsersPage() {
       )}
 
       {selected && (
-        <div className="drawer-backdrop" onClick={() => setSelected(null)}>
+        <div className="drawer-backdrop" onClick={closeDetail}>
           <aside className="drawer" onClick={(e) => e.stopPropagation()}>
             <SectionHead title="Kullanıcı ayrıntısı" />
             <dl className="detail">
@@ -201,6 +267,11 @@ export default function UsersPage() {
             </p>
 
             <div className="drawer-actions">
+              {(selected.accountLockedUntil !== null || (selected.failedLoginAttempts ?? 0) > 0) && (
+                <button disabled={busy} onClick={() => unlock(selected)}>
+                  Kilidi aç ve sayacı sıfırla
+                </button>
+              )}
               <button
                 className={selected.active ? 'danger' : ''}
                 disabled={busy}
@@ -208,7 +279,7 @@ export default function UsersPage() {
               >
                 {selected.active ? 'Hesabı pasifleştir' : 'Hesabı etkinleştir'}
               </button>
-              <button className="ghost" onClick={() => setSelected(null)}>
+              <button className="ghost" onClick={closeDetail}>
                 Kapat
               </button>
             </div>

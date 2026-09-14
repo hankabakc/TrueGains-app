@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import ReportsPage from './ReportsPage';
 import type { AdminReportRow, PageResponse } from '../api/types';
 
@@ -47,6 +48,22 @@ const gecmis = [
   row(18, 'SPAM', 'DISMISSED'),
 ];
 
+function AdresGoster() {
+  const location = useLocation();
+  return <p>adres:{location.pathname + location.search}</p>;
+}
+
+function sayfayiAc() {
+  return render(
+    <MemoryRouter initialEntries={['/reports']}>
+      <Routes>
+        <Route path="/reports" element={<ReportsPage />} />
+        <Route path="/users" element={<AdresGoster />} />
+      </Routes>
+    </MemoryRouter>,
+  );
+}
+
 beforeEach(() => {
   vi.mocked(reportsApi.search).mockImplementation(async (p: { reportedUserId?: number }) =>
     p.reportedUserId ? page(gecmis, 6) : page(bekleyenler, 2),
@@ -67,7 +84,7 @@ async function cekmeceyiAc(sira: number) {
 
 describe('ReportsPage Çekmece ve Karar Bileşen Testleri', () => {
   it('kutu işaretliyken "İşlem yapıldı" tıklandığında suspendReportedUser true olarak gönderilir', async () => {
-    render(<ReportsPage />);
+    sayfayiAc();
     await cekmeceyiAc(0);
     fireEvent.click(screen.getByLabelText('Hesabı da pasifleştir'));
     fireEvent.change(screen.getByLabelText('Karar notu'), { target: { value: 'not' } });
@@ -77,7 +94,7 @@ describe('ReportsPage Çekmece ve Karar Bileşen Testleri', () => {
 
   it('kutu işaretliyken "Reddet" tıklandığında suspendReportedUser false olarak gönderilir', async () => {
     // Kutu işaretliyken false gitmezse backend 400 döner ve şikâyet reddedilemez.
-    render(<ReportsPage />);
+    sayfayiAc();
     await cekmeceyiAc(1);
     fireEvent.click(screen.getByLabelText('Hesabı da pasifleştir'));
     fireEvent.click(screen.getByText('Reddet'));
@@ -86,16 +103,23 @@ describe('ReportsPage Çekmece ve Karar Bileşen Testleri', () => {
 
   it('karar isteği başarısız olursa çekmecede hata görünür', async () => {
     vi.mocked(reportsApi.resolve).mockRejectedValue(new Error('Şikâyet karara bağlanamadı.'));
-    render(<ReportsPage />);
+    sayfayiAc();
     await cekmeceyiAc(0);
     fireEvent.click(screen.getByText('İşlem yapıldı'));
     expect(await screen.findByText('Şikâyet karara bağlanamadı.')).toBeTruthy();
   });
 
   it('çekmece geçmiş şikâyetler listesini ve bu kayıt etiketini gösterir', async () => {
-    const { container } = render(<ReportsPage />);
+    const { container } = sayfayiAc();
     await cekmeceyiAc(0);
     await screen.findByText('Toplam 6 şikâyet (en yeni 5):');
     expect(container.textContent).toContain('(bu kayıt)');
+  });
+
+  it('kullanıcı ayrıntısı düğmesi Kullanıcılar sayfasına o kişiyle gider', async () => {
+    sayfayiAc();
+    await cekmeceyiAc(0);
+    fireEvent.click(screen.getByText('Kullanıcı ayrıntısı'));
+    expect(await screen.findByText('adres:/users?id=15')).toBeTruthy();
   });
 });

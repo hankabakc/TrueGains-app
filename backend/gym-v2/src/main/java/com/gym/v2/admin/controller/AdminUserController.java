@@ -1,6 +1,7 @@
 package com.gym.v2.admin.controller;
 
 import com.gym.v2.admin.dto.AdminUserDetailDto;
+import com.gym.v2.admin.dto.AdminUserExportDto;
 import com.gym.v2.admin.dto.AdminUserRowDto;
 import com.gym.v2.admin.service.AdminUserService;
 import com.gym.v2.core.response.ApiResponse;
@@ -47,6 +48,18 @@ public class AdminUserController {
 		return ApiResponse.success(PageResponse.from(result), "Kullanıcılar listelendi.", clock.instant());
 	}
 
+	/**
+	 * KR9 → A. Sabit yol ("/export") degiskenli yoldan ("/{userId}") daha ozel oldugu
+	 * icin once eslesir.
+	 */
+	@GetMapping("/export")
+	public ApiResponse<AdminUserExportDto> export(@RequestParam(required = false) String role,
+			@RequestParam(required = false) String query, @RequestParam(required = false) Boolean active,
+			Authentication authentication) {
+		return ApiResponse.success(adminUserService.exportCsv(role, query, active, authentication.getName()),
+				"Kullanıcılar dışa aktarıldı.", clock.instant());
+	}
+
 	@GetMapping("/{userId}")
 	public ApiResponse<AdminUserDetailDto> detail(@PathVariable Long userId) {
 		return ApiResponse.success(adminUserService.getDetail(userId), "Kullanıcı getirildi.", clock.instant());
@@ -58,6 +71,12 @@ public class AdminUserController {
 		AdminUserDetailDto result = adminUserService.setActive(userId, value, authentication.getName());
 		return ApiResponse.success(result, value ? "Hesap etkinleştirildi." : "Hesap pasifleştirildi.",
 				clock.instant());
+	}
+
+	@PatchMapping("/{userId}/unlock")
+	public ApiResponse<AdminUserDetailDto> unlock(@PathVariable Long userId, Authentication authentication) {
+		return ApiResponse.success(adminUserService.unlock(userId, authentication.getName()),
+				"Hesabın giriş kilidi açıldı.", clock.instant());
 	}
 
 }

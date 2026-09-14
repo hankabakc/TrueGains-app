@@ -21,6 +21,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.not;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -434,6 +438,48 @@ class AdminContractIT extends IntegrationTestBase {
 			.andExpect(jsonPath("$.data.successfulPayments").value(1))
 			.andExpect(jsonPath("$.data.failedPayments").value(1))
 			.andExpect(jsonPath("$.data.revenueTotal").value(750.00));
+	}
+
+	@Test
+	void users_export_appliesScreenFiltersAndDecryptsNames() throws Exception {
+		mockMvc.perform(authed("/api/v1/admin/users/export?role=COACH"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.data.rowCount").value(1))
+			.andExpect(jsonPath("$.data.csv")
+				.value(containsString("\"antrenor@test.com\";\"Antrenör Adı\";\"Antrenör\";aktif;hayır;")))
+			.andExpect(jsonPath("$.data.csv").value(not(containsString("sporcu@test.com"))));
+
+		mockMvc.perform(authed("/api/v1/admin/users/export"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.data.rowCount").value(3));
+	}
+
+	@Test
+	void users_unlock_resetsCounterAndLockInDatabase() throws Exception {
+		AppUser clientUser = userRepository.findById(clientUserId).orElseThrow();
+		clientUser.setFailedLoginAttempts(3);
+		clientUser.setAccountLockedUntil(Instant.parse("2099-01-01T00:00:00Z"));
+		userRepository.saveAndFlush(clientUser);
+
+		mockMvc
+			.perform(patch("/api/v1/admin/users/" + clientUserId + "/unlock")
+				.header(HttpHeaders.AUTHORIZATION, adminToken)
+				.with(csrf()))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.data.failedLoginAttempts").value(0))
+			.andExpect(jsonPath("$.data.active").value(true));
+
+		AppUser refreshed = userRepository.findById(clientUserId).orElseThrow();
+		assertThat(refreshed.getFailedLoginAttempts()).isZero();
+		assertThat(refreshed.getAccountLockedUntil()).isNull();
+	}
+
+	@Test
+	void users_unlock_unknownUser_returns404() throws Exception {
+		mockMvc
+			.perform(patch("/api/v1/admin/users/999999/unlock").header(HttpHeaders.AUTHORIZATION, adminToken)
+				.with(csrf()))
+			.andExpect(status().isNotFound());
 	}
 
 }

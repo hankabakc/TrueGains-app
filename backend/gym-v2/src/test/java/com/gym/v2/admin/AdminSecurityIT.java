@@ -3,8 +3,10 @@ package com.gym.v2.admin;
 import com.gym.v2.support.IntegrationTestBase;
 import org.junit.jupiter.api.Test;
 
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -25,9 +27,9 @@ class AdminSecurityIT extends IntegrationTestBase {
 	 * yeni yol otomatik korunmali; liste o guvenceyi tek tek kanitliyor.
 	 */
 	private static final java.util.List<String> READ_ENDPOINTS = java.util.List.of("/api/v1/admin/overview",
-			"/api/v1/admin/system", "/api/v1/admin/errors", "/api/v1/admin/users", "/api/v1/admin/finance/revenue",
-			"/api/v1/admin/finance/payments", "/api/v1/admin/audit", "/api/v1/admin/audit/actions",
-			"/api/v1/admin/reports");
+			"/api/v1/admin/system", "/api/v1/admin/errors", "/api/v1/admin/users", "/api/v1/admin/users/export",
+			"/api/v1/admin/finance/revenue", "/api/v1/admin/finance/payments", "/api/v1/admin/audit",
+			"/api/v1/admin/audit/actions", "/api/v1/admin/reports");
 
 	/**
 	 * Kimlik dogrulamasi olmayan istek 401 DEGIL 403 aliyor: bu uygulamanin mevcut
@@ -124,6 +126,13 @@ class AdminSecurityIT extends IntegrationTestBase {
 						.with(user("antrenor@test.com").roles("COACH"))
 						.with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors
 							.csrf()))
+			.andExpect(status().isForbidden());
+	}
+
+	@Test
+	void unlockUser_asClient_isForbidden() throws Exception {
+		mockMvc
+			.perform(patch("/api/v1/admin/users/1/unlock").with(user("sporcu@test.com").roles("CLIENT")).with(csrf()))
 			.andExpect(status().isForbidden());
 	}
 

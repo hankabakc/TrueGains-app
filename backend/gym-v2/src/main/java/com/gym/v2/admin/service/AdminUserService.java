@@ -1,7 +1,9 @@
 package com.gym.v2.admin.service;
 
 import com.gym.v2.admin.dto.AdminUserDetailDto;
+import com.gym.v2.admin.dto.AdminUserExportDto;
 import com.gym.v2.admin.dto.AdminUserRowDto;
+import com.gym.v2.admin.dto.AdminUserRowProjection;
 import com.gym.v2.admin.repository.AdminUserRepository;
 import com.gym.v2.auth.entity.AppUser;
 import com.gym.v2.auth.entity.ClientEntity;
@@ -17,6 +19,7 @@ import com.gym.v2.finance.repository.ClientSubscriptionRepository;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.Optional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -27,15 +30,19 @@ import org.springframework.transaction.annotation.Transactional;
  * Yonetim panelinin kullanici islemleri.
  * <p>
  * Okuma tarafi {@link AdminUserRepository} uzerinden (yazma yuzeyi olmayan arayuz). Yazma
- * yalnizca TEK bir islem icin acik: hesabi pasiflestirme/geri acma. Bu islem ayrica ve
- * acikca denetim defterine yazilir - okuma kaydi otomatik, YAZMA kaydi neyin degistigini
- * de icermeli.
+ * iki islem icin acik: hesabi pasiflestirme/geri acma ve giris kilidini acma. Ikisi ve
+ * toplu disa aktarma ayrica ve acikca denetim defterine yazilir - okuma kaydi otomatik,
+ * YAZMA kaydi neyin degistigini de icermeli.
  * </p>
  */
 @Service
 public class AdminUserService {
 
 	static final String ACTION_STATUS_CHANGE = "ADMIN_USER_STATUS_CHANGE";
+
+	static final String ACTION_UNLOCK = "ADMIN_USER_UNLOCK";
+
+	static final String ACTION_EXPORT = "ADMIN_USER_EXPORT";
 
 	private final AdminUserRepository adminUserRepository;
 
@@ -69,14 +76,29 @@ public class AdminUserService {
 
 	@Transactional(readOnly = true)
 	public Page<AdminUserRowDto> search(String role, String query, Boolean activeOnly, Pageable pageable) {
-		String normalizedRole = blankToNull(role);
-		String normalizedQuery = blankToNull(query);
+		return adminUserRepository.search(blankToNull(role), blankToNull(query), activeOnly, pageable).map(this::toRow);
+	}
 
-		return adminUserRepository.search(normalizedRole, normalizedQuery, activeOnly, pageable)
-			.map(p -> new AdminUserRowDto(p.getId(), p.getEmail(),
-					encryptionConverter.convertToEntityAttribute(p.getFullName()), UserRole.valueOf(p.getRole()),
-					Boolean.TRUE.equals(p.getActive()), Boolean.TRUE.equals(p.getPremium()),
-					ProjectionTime.toInstant(p.getRegisteredAt()), ProjectionTime.toInstant(p.getLastLoginAt())));
+	/**
+	 * Ekrandaki suzgeclerle eslesen BUTUN kullanicilari CSV olarak verir (KR9 → A:
+	 * listedeki sutunlar, telefon yok).
+	 * <p>
+	 * Toplu kisisel veri cikisidir: otomatik erisim kaydina ek olarak suzgec ve satir
+	 * sayisiyla ayrica denetim defterine yazilir. Eslesenlerin tamami tek sorguda bellege
+	 * alinir; kullanici sayisi on binleri asarsa sayfa sayfa akisa gecilir.
+	 * </p>
+	 */
+	@Transactional(readOnly = true)
+	public AdminUserExportDto exportCsv(String role, String query, Boolean activeOnly, String adminEmail) {
+		List<AdminUserRowDto> rows = adminUserRepository
+			.search(blankToNull(role), blankToNull(query), activeOnly, Pageable.unpaged())
+			.map(this::toRow)
+			.getContent();
+
+		String fileName = "kullanicilar-" + LocalDate.ofInstant(clock.instant(), ZoneOffset.UTC) + ".csv";
+		auditLogService.log(ACTION_EXPORT, adminEmail, "rows=" + rows.size() + " role=" + blankToNull(role) + " query="
+				+ blankToNull(query) + " active=" + activeOnly);
+		return new AdminUserExportDto(fileName, rows.size(), AdminUserCsv.toCsv(rows));
 	}
 
 	@Transactional(readOnly = true)
@@ -102,7 +124,7 @@ public class AdminUserService {
 	}
 
 	/**
-	 * Hesabi pasiflestirir veya geri acar. Panelin TEK yazma islemi.
+	 * Hesabi pasiflestirir veya geri acar.
 	 * <p>
 	 * Silme bilerek yok: geri alinamaz bir islem, denetim defteri olsa bile veriyi geri
 	 * getirmez. Hesap silme akisi uygulamada zaten var (KVKK) ve kullanicinin kendi
@@ -121,6 +143,37 @@ public class AdminUserService {
 		auditLogService.log(ACTION_STATUS_CHANGE, adminEmail, "userId=" + userId + " " + previous + " -> " + active);
 
 		return getDetail(userId);
+	}
+
+	/**
+	 * Giris kilidini acar ve basarisiz giris sayacini sifirlar.
+	 * <p>
+	 * Kilit 5 hatali denemede 15 dk suruyor ({@code AuthenticationService}). Hesabin
+	 * aktif/pasif durumuna DOKUNMAZ: pasif (veya silinmis) hesap kilidi acilsa da
+	 * giremez.
+	 * </p>
+	 */
+	@Transactional
+	public AdminUserDetailDto unlock(Long userId, String adminEmail) {
+		AppUser user = appUserRepository.findById(userId)
+			.orElseThrow(() -> new NotFoundException("Kullanıcı bulunamadı."));
+
+		String previous = "attempts=" + user.getFailedLoginAttempts() + " lockedUntil=" + user.getAccountLockedUntil();
+		user.setFailedLoginAttempts(0);
+		user.setAccountLockedUntil(null);
+		appUserRepository.save(user);
+
+		auditLogService.log(ACTION_UNLOCK, adminEmail,
+				"userId=" + userId + " " + previous + " -> attempts=0 lockedUntil=null");
+
+		return getDetail(userId);
+	}
+
+	private AdminUserRowDto toRow(AdminUserRowProjection p) {
+		return new AdminUserRowDto(p.getId(), p.getEmail(),
+				encryptionConverter.convertToEntityAttribute(p.getFullName()), UserRole.valueOf(p.getRole()),
+				Boolean.TRUE.equals(p.getActive()), Boolean.TRUE.equals(p.getPremium()),
+				ProjectionTime.toInstant(p.getRegisteredAt()), ProjectionTime.toInstant(p.getLastLoginAt()));
 	}
 
 	private static String blankToNull(String value) {

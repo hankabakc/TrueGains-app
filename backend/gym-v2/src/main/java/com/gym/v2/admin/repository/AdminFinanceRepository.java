@@ -20,9 +20,9 @@ import org.springframework.data.repository.query.Param;
  */
 public interface AdminFinanceRepository extends Repository<PaymentTransaction, Long> {
 
-	// failedPayments yalnızca FAILED sayar: FinanceService her ödeme başlangıcında
-	// PENDING
-	// satırı açıyor; yarıda bırakılan ödeme başarısız ödeme değildir.
+	// failedPayments yalnızca FAILED sayar: FinanceService her ödeme
+	// başlangıcında PENDING satırı açıyor; yarıda bırakılan ödeme
+	// başarısız ödeme değildir.
 	@Query(value = """
 			SELECT
 			  COALESCE((SELECT SUM(amount) FROM payment_transaction

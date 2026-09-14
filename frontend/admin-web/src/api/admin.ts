@@ -8,6 +8,7 @@ import type {
   AdminRevenue,
   AdminSystem,
   AdminUserDetail,
+  AdminUserExport,
   AdminUserRow,
   AuthResponse,
   PageResponse,
@@ -33,6 +34,9 @@ export const usersApi = {
   detail: (id: number) => request<AdminUserDetail>(`/api/v1/admin/users/${id}`),
   setActive: (id: number, value: boolean) =>
     request<AdminUserDetail>(`/api/v1/admin/users/${id}/active${qs({ value })}`, { method: 'PATCH' }),
+  unlock: (id: number) => request<AdminUserDetail>(`/api/v1/admin/users/${id}/unlock`, { method: 'PATCH' }),
+  exportCsv: (params: { role?: string; query?: string; active?: boolean | null }) =>
+    request<AdminUserExport>(`/api/v1/admin/users/export${qs(params)}`),
 };
 
 export const financeApi = {
