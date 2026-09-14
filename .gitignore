@@ -115,4 +115,6 @@ frontend/gymapp-v2/flutter_*.png
 
 # Ornek ortam dosyalari depoya GIRER: yukaridaki `.env.*` kuralinin istisnasi, sonda durmali
 !.env.example
+# Kok README depoya GIRER: yukaridaki `*.md` kuralinin istisnasi; alt klasorlerdeki .md'ler disarida kalir
+!/README.md
 
