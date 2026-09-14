@@ -1,0 +1,2 @@
+ALTER TABLE client ADD COLUMN province VARCHAR(50);
+ALTER TABLE client ADD COLUMN district VARCHAR(50);

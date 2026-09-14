@@ -1,0 +1,65 @@
+name: CI
+
+# 305 backend + 156 frontend testi vardı ama push'ta kimse koşturmuyordu; güvenlik ağı
+# birinin elle `mvn test` yazmasına bağlıydı ve zamanla çürürdü.
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  backend:
+    name: Backend — test + stil
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend/gym-v2
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: JDK 25 kur
+        uses: actions/setup-java@v4
+        with:
+          java-version: '25'
+          distribution: temurin
+          cache: maven
+
+      - name: Testler
+        run: mvn --batch-mode test
+
+      # Stil ayrı adımda: test kırıldığında sebebin stil mi mantık mı olduğu
+      # loga bakmadan anlaşılsın.
+      - name: Checkstyle
+        run: mvn --batch-mode checkstyle:check
+
+      - name: Kapsam raporunu sakla
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jacoco
+          path: backend/gym-v2/target/site/jacoco/
+          if-no-files-found: ignore
+
+  frontend:
+    name: Frontend — test + analiz
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend/gymapp-v2
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Flutter kur
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Bağımlılıklar
+        run: flutter pub get
+
+      - name: Statik analiz
+        run: flutter analyze
+
+      - name: Testler
+        run: flutter test

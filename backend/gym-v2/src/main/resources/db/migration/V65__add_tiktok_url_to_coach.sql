@@ -1,0 +1,1 @@
+ALTER TABLE coach ADD COLUMN tiktok_url VARCHAR(500);

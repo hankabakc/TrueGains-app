@@ -1,0 +1,186 @@
+# Tüm servisler için log döndürme. Varsayılanda docker json log dosyası sınırsız büyür ve
+# uzun süre çalışan bir kurulumda diski doldurur — bu, uygulamayı da veritabanını da
+# durdurur. Loki aramayı çözer, bu ayar disk sınırını.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: gymapp_v2_db
+    environment:
+      POSTGRES_DB: gymapp_v2
+      POSTGRES_USER: gymapp_admin
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    ports:
+      - "5434:5432"
+    volumes:
+      - gymapp_v2_db_data:/var/lib/postgresql/data
+    # Backend, veritabanı gerçekten sorgu kabul edene kadar beklemeli. "Konteyner ayakta"
+    # yetmez: Postgres birkaç saniye açılış yapar, o sırada Flyway bağlanamaz ve uygulama
+    # bean zinciriyle patlar.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gymapp_admin -d gymapp_v2"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    logging: *default-logging
+    # Docker yeniden başladığında veritabanı da kalksın. Bu satır yokken 14.09.2026'da Docker
+    # Desktop yeniden başlayınca diğer servisler geldi, veritabanı kapalı kaldı ve backend
+    # açılış döngüsüne girdi.
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: .
+    container_name: gymapp_v2_backend
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      # Konteyner içinden veritabanına servis adıyla erişilir; host'taki 5434 eşlemesi
+      # yalnızca dışarıdan bağlanmak için. .env'deki DB_URL localhost'u gösterdiği için
+      # burada bilinçli olarak eziliyor.
+      DB_URL: jdbc:postgresql://db:5432/gymapp_v2
+      DB_USERNAME: gymapp_admin
+      DB_PASSWORD: ${DB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      SENTRY_DSN: ${SENTRY_DSN}
+      SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT}
+      # Yonetim panelinin hata ozeti icin Sentry OKUMA erisimi. Jeton sunucuda
+      # kalir; tarayiciya verilseydi paneli acan herkes tum projelerin hata
+      # verisine dogrudan erisirdi.
+      SENTRY_AUTH_TOKEN: ${SENTRY_AUTH_TOKEN:-}
+      SENTRY_ORG: ${SENTRY_ORG:-}
+      SENTRY_BACKEND_PROJECT: ${SENTRY_BACKEND_PROJECT:-}
+      SENTRY_MOBILE_PROJECT: ${SENTRY_MOBILE_PROJECT:-}
+      SENTRY_BASE_URL: ${SENTRY_BASE_URL:-https://de.sentry.io}
+      # İlk yönetici hesabı: yalnızca veritabanında hiç yönetici yoksa kullanılır (AdminBootstrap).
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      # Yüklenen dosyalar konteyner katmanına değil kalıcı volume'e yazılsın; aksi hâlde
+      # her yeniden başlatmada profil fotoğrafları gider (bkz. PLAN D1-02).
+      APP_FILE_UPLOAD_DIR: /var/lib/gymapp/uploads
+      # Vekil arkasındayız: istemci IP'si X-Forwarded-For'dan okunur. Bu ayar YALNIZCA
+      # burada açık — varsayılan `false` çünkü vekilsiz çalışan bir kurulumda istemci
+      # başlığı uydurup hız sınırını atlatır. nginx başlığı ezdiği için burada güvenli.
+      APP_SECURITY_RATE_LIMIT_TRUST_FORWARDED_HEADER: "true"
+      # CORS izinli adresler. Mobil uygulama CORS kullanmaz; bu ayar **web sürümü** için.
+      # Üretimde gerçek alan adı verilmezse tarayıcı tüm istekleri bloklar. Joker (*)
+      # kabul edilmiyor — kimlik bilgisi taşıyan isteklerde tarayıcı zaten reddeder,
+      # uygulama açılışta durur.
+      APP_SECURITY_CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000,capacitor://localhost}
+    # Backend artık dışarı açılmıyor: tek giriş noktası vekil. Doğrudan erişilebilseydi
+    # istemci vekili atlayıp sahte X-Forwarded-For ile hız sınırını devre dışı bırakırdı.
+    # Yönetim portu (9090) da yayınlanmaz; yalnızca ağdaki Prometheus okur.
+    expose:
+      - "8082"
+      - "9090"
+    volumes:
+      - gymapp_v2_uploads:/var/lib/gymapp/uploads
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9090/actuator/health | grep -q UP"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    logging: *default-logging
+    restart: unless-stopped
+
+  # Tek giriş noktası. İstemci adresi (8082) değişmedi — uygulama yapılandırması aynı
+  # kalıyor, arkasındaki yerleşim değişti.
+  proxy:
+    image: nginx:1.27-alpine
+    container_name: gymapp_v2_proxy
+    depends_on:
+      - backend
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      # Yonetim paneli derlemesi. Panel ayni kokenden servis edilsin diye
+      # nginx'e baglaniyor; boylece Vite gelistirme sunucusuna bagimlilik biter.
+      - ../../frontend/admin-web/dist:/usr/share/nginx/admin:ro
+    ports:
+      - "8082:80"
+    logging: *default-logging
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v3.1.0
+    container_name: gymapp_v2_prometheus
+    depends_on:
+      - backend
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - gymapp_v2_prometheus_data:/prometheus
+    # Panel yalnızca yerelden erişilebilir; metrik verisi de işletim bilgisidir.
+    ports:
+      - "127.0.0.1:9091:9090"
+    logging: *default-logging
+    restart: unless-stopped
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.16.0
+    container_name: gymapp_v2_postgres_exporter
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATA_SOURCE_NAME: "postgresql://gymapp_admin:${DB_PASSWORD}@db:5432/gymapp_v2?sslmode=disable"
+    logging: *default-logging
+    restart: unless-stopped
+
+  loki:
+    image: grafana/loki:3.3.2
+    container_name: gymapp_v2_loki
+    command: -config.file=/etc/loki/loki-config.yml
+    volumes:
+      - ./monitoring/loki-config.yml:/etc/loki/loki-config.yml:ro
+      - gymapp_v2_loki_data:/loki
+    logging: *default-logging
+    restart: unless-stopped
+
+  # Konteyner loglarını Loki'ye taşır. Docker soketini **salt okunur** bağlar; yalnızca
+  # konteynerleri keşfetmek ve log akışlarını okumak için.
+  promtail:
+    image: grafana/promtail:3.3.2
+    container_name: gymapp_v2_promtail
+    depends_on:
+      - loki
+    command: -config.file=/etc/promtail/promtail-config.yml
+    volumes:
+      - ./monitoring/promtail-config.yml:/etc/promtail/promtail-config.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    logging: *default-logging
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.5.1
+    container_name: gymapp_v2_grafana
+    depends_on:
+      - prometheus
+      - loki
+    environment:
+      # Varsayılan parola kaynakta tutulmaz; .env'de verilmezse compose açılmaz ve nedeni söyler.
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:?GRAFANA_PASSWORD .env dosyasinda tanimli olmali}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - gymapp_v2_grafana_data:/var/lib/grafana
+      # Veri kaynakları dosyayla kuruluyor; elle kurulan panel konteyner sıfırlanınca
+      # kaybolur.
+      - ./monitoring/grafana-datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml:ro
+    ports:
+      - "127.0.0.1:3001:3000"
+    logging: *default-logging
+    restart: unless-stopped
+
+volumes:
+  gymapp_v2_db_data:
+  gymapp_v2_uploads:
+  gymapp_v2_prometheus_data:
+  gymapp_v2_grafana_data:
+  gymapp_v2_loki_data:

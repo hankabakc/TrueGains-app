@@ -1,0 +1,23 @@
+# Prometheus kazıma yapılandırması.
+#
+# Hedef, backend'in **yönetim portu** (9090). O port compose ağında kalıyor, host'a
+# açılmıyor; yani metrikler yalnızca bu ağdaki servisler tarafından okunabiliyor ve
+# Prometheus'a uygulama kimliği vermek gerekmiyor.
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: gymapp-backend
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["backend:9090"]
+        labels:
+          application: gymapp-v2
+
+  - job_name: postgres
+    static_configs:
+      - targets: ["postgres-exporter:9187"]
+        labels:
+          application: gymapp-v2

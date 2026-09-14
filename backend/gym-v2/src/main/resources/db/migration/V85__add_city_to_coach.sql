@@ -1,0 +1,2 @@
+ALTER TABLE coach ADD COLUMN province VARCHAR(50);
+ALTER TABLE coach ADD COLUMN district VARCHAR(50);

@@ -1,0 +1,34 @@
+# Promtail — konteyner loglarını Loki'ye taşır.
+#
+# Docker servis keşfi kullanılıyor: yeni bir servis eklendiğinde burayı düzenlemek
+# gerekmiyor, konteyner adı etiket olarak geliyor.
+
+server:
+  http_listen_port: 9080
+  log_level: warn
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  - job_name: docker
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 15s
+    relabel_configs:
+      # SADECE bu compose projesinin konteynerleri. Docker keşfi host'taki HER konteyneri
+      # görüyor; filtre olmadan aynı makinedeki başka projelerin logları bu projenin log
+      # deposuna akıyordu. Hem gereksiz hem de proje sınırını aşan bir veri karışması.
+      - source_labels: ["__meta_docker_container_label_com_docker_compose_project"]
+        regex: "gym-v2"
+        action: keep
+
+      # Konteyner adı "/gymapp_v2_backend" biçiminde geliyor; baştaki eğik çizgi atılıyor.
+      - source_labels: ["__meta_docker_container_name"]
+        regex: "/(.*)"
+        target_label: container
+      - source_labels: ["__meta_docker_container_log_stream"]
+        target_label: stream

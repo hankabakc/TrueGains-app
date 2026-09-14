@@ -1,0 +1,1 @@
+ALTER TABLE client ADD COLUMN tiktok_url VARCHAR(500);

@@ -1,0 +1,118 @@
+# --- Core Ignores ---
+.DS_Store
+Thumbs.db
+*.log
+*.tmp
+*.bak
+*.swp
+*.txt
+*~
+.lock-wscript
+
+# --- IDEs and Editors ---
+.idea/
+.vscode/
+*.iml
+*.iws
+*.ipr
+.settings/
+.classpath
+.project
+.factorypath
+.springBeans
+.sts4-cache
+
+# --- Environments and Secrets (Sifre Koruma) ---
+.env
+.env.*
+*.jar
+*.war
+*.ear
+*.class
+*.jks
+*.keystore
+*.p12
+*.pem
+*.key
+**/android/local.properties
+**/android/key.properties
+google-services.json
+GoogleService-Info.plist
+*firebase-adminsdk*.json
+
+# --- Build and Artifacts (Gereksizler) ---
+**/target/
+**/build/
+**/dist/
+**/bin/
+**/out/
+**/.dart_tool/
+**/.pub-cache/
+**/.pub/
+**/.packages
+**/node_modules/
+**/.next/
+**/.nuxt/
+**/.cache/
+
+# --- Mobile/Flutter Specific ---
+**/ios/Flutter/ephemeral/
+**/ios/Flutter/Generated.xcconfig
+**/ios/Flutter/flutter_export_environment.sh
+**/ios/Runner/GeneratedPluginRegistrant.h
+**/ios/Runner/GeneratedPluginRegistrant.m
+**/windows/flutter/ephemeral/
+**/linux/flutter/ephemeral/
+**/macos/Flutter/ephemeral/
+
+# --- App Specific (User Uploads & Logs) ---
+**/uploads/
+**/media/
+backend_startup.log
+frontend_startup.log
+sonresuim.png
+GYMAPP_YEDEK.sql
+25.02.txt
+GIRIS.txt
+fazkar.txt
+
+# --- Test Coverage Outputs ---
+frontend/gymapp-v2/coverage/
+backend/gym-v2/target/site/jacoco/
+
+# Claude Code yerel izin listesi — calistirilan komutlarin tam metnini saklar,
+# icinde env degiskenleri (parola/anahtar) gecebilir. Depoya girmemeli.
+.claude/settings.local.json
+
+# Arsiv ve teslim ciktilari (kaynak kod degil)
+*.zip
+FINALTEZ*.pdf
+
+# Yerel tohum/yardimci script'ler (kaynak kod degil, ortam degeri icerir)
+*.ps1
+
+# Veritabani yedekleri: uretim verisi icerir, depoya girmez (bkz. scripts/db-backup.sh)
+backups/
+
+# Python derleme ciktisi: kaynaktaki sabitler (jeton dahil) icine gomulu kalir
+__pycache__/
+*.pyc
+
+# --- Depoya YALNIZCA kaynak kod ve ornek dosyalar girer (kullanici karari, 14.09.2026) ---
+# Belgeler ve AI calisma/hafiza klasorleri
+*.md
+.agents/
+.gemini/
+.claude/
+# Gelistirici yardimci dosyalari (kaynak kod degil). decrypt.py gelistirme anahtarini ve
+# veritabanindan alinmis sifreli kisisel veriyi tasiyordu.
+/sentry_*.py
+/scratch_*.py
+/Gemini_Generated_Image_*
+backend/gym-v2/decrypt.py
+frontend/gymapp-v2/test_parse.dart
+frontend/gymapp-v2/flutter_*.png
+
+# Ornek ortam dosyalari depoya GIRER: yukaridaki `.env.*` kuralinin istisnasi, sonda durmali
+!.env.example
+

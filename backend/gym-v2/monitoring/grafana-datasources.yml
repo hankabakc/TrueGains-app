@@ -1,0 +1,18 @@
+# Grafana veri kaynakları — elle tıklamayla değil, dosyayla kuruluyor.
+#
+# Sebep: elle kurulan bir panel, konteyner sıfırlandığında veya başka bir makineye
+# taşındığında kaybolur ve "bende çalışıyordu" durumuna düşer.
+
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+
+  - name: Loki
+    type: loki
+    access: proxy
+    url: http://loki:3100

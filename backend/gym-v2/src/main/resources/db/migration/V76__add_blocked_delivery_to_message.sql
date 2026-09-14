@@ -1,0 +1,1 @@
+ALTER TABLE message ADD COLUMN is_blocked_delivery BOOLEAN NOT NULL DEFAULT FALSE;

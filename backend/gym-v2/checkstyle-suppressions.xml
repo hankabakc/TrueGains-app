@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<!DOCTYPE suppressions PUBLIC
+    "-//Checkstyle//DTD Suppressions 1.2//EN"
+    "https://checkstyle.org/dtds/suppressions_1_2.dtd">
+<suppressions>
+    <!-- Seed ve DTO sınıflarında magic number'ları görmezden gel -->
+    <suppress checks="MagicNumber" files=".*SeedController\.java"/>
+    <suppress checks="MagicNumber" files=".*DTO\.java"/>
+    <suppress checks="MagicNumber" files=".*Request\.java"/>
+    <suppress checks="MagicNumber" files=".*Response\.java"/>
+    
+    <!-- Test sınıflarında her şeyi görmezden gel -->
+    <suppress checks=".*" files="src[\\/]test[\\/]java[\\/].*"/>
+    
+    <!-- MapStruct tarafından üretilen sınıfları görmezden gel -->
+    <suppress checks=".*" files=".*MapperImpl\.java"/>
+</suppressions>

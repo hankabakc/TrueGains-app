@@ -1,0 +1,8 @@
+# Derleme bağlamını küçük tutar; target/ kopyalanırsa imaj gereksiz büyür ve yerel
+# derleme artıkları konteynerdeki derlemeyi kirletebilir.
+target/
+.env
+*.log
+
+# Yedekler üretim verisi içerir, imaja girmemeli.
+backups/
