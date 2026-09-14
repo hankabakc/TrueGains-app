@@ -8,11 +8,13 @@ import ReportsPage from './pages/ReportsPage';
 import FinancePage from './pages/FinancePage';
 import ErrorsPage from './pages/ErrorsPage';
 import AuditPage from './pages/AuditPage';
-import { setUnauthorizedHandler, tokenStore } from './api/client';
+import { setUnauthorizedHandler, tokenStore, userStore } from './api/client';
 import type { AuthUser } from './api/types';
 
 export default function App() {
-  const [user, setUser] = useState<AuthUser | null>(null);
+  // Yenilemede oturum korunur: jeton ve kullanıcı birlikte varsa panel açılır. Jeton
+  // geçersizse ilk istek 401/403 alır ve onUnauthorized çıkış yapar.
+  const [user, setUser] = useState<AuthUser | null>(() => (tokenStore.get() ? userStore.get() : null));
 
   const signOut = useCallback(() => {
     tokenStore.clear();

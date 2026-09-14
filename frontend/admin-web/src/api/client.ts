@@ -1,15 +1,38 @@
-import type { ApiResponse } from './types';
+import type { ApiResponse, AuthUser } from './types';
 
 const TOKEN_KEY = 'gymapp_admin_token';
 const DEVICE_KEY = 'gymapp_admin_device';
 const EMAIL_KEY = 'gymapp_admin_email';
+const USER_KEY = 'gymapp_admin_user';
 
 // sessionStorage bilerek: yonetim jetonu tarayici kapaninca gitsin. localStorage
 // olsaydi ortak bir makinede sekme kapatilsa bile oturum acik kalirdi.
 export const tokenStore = {
   get: () => sessionStorage.getItem(TOKEN_KEY),
   set: (token: string) => sessionStorage.setItem(TOKEN_KEY, token),
-  clear: () => sessionStorage.removeItem(TOKEN_KEY),
+  // Kullanıcı jetonla birlikte gider: biri kalırsa panel yarım oturumla açılırdı.
+  clear: () => {
+    sessionStorage.removeItem(TOKEN_KEY);
+    sessionStorage.removeItem(USER_KEY);
+  },
+};
+
+/**
+ * Giriş yapan yönetici. F5'te jeton dururken giriş ekranı gelmesin diye jetonla aynı
+ * depoda. Yalnızca gösterim içindir: yetkiyi sunucu her istekte jetondan denetler.
+ */
+export const userStore = {
+  get: (): AuthUser | null => {
+    const raw = sessionStorage.getItem(USER_KEY);
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw) as AuthUser;
+    } catch {
+      // Bozuk kayıt oturum sayılmaz; giriş ekranı gelir.
+      return null;
+    }
+  },
+  set: (user: AuthUser) => sessionStorage.setItem(USER_KEY, JSON.stringify(user)),
 };
 
 // Panelin tek bir yoneticisi var; e-postayi her seferinde yazdirmanin anlami yok.

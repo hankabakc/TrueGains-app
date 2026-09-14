@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { login } from '../api/admin';
-import { rememberedEmail, tokenStore } from '../api/client';
+import { rememberedEmail, tokenStore, userStore } from '../api/client';
 import type { AuthUser } from '../api/types';
 
 interface Props {
@@ -34,6 +34,7 @@ export default function LoginPage({ onSignedIn }: Props) {
 
       rememberedEmail.set(auth.user.email);
       tokenStore.set(auth.access_token);
+      userStore.set(auth.user);
       onSignedIn(auth.user);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Giriş yapılamadı.');
