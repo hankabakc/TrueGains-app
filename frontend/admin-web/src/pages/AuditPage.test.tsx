@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import AuditPage from './AuditPage';
 import type { AdminAuditRow, PageResponse } from '../api/types';
 
@@ -82,5 +82,21 @@ describe('AuditPage Bileşen Testleri', () => {
     const details = screen.getAllByText('reportId=22 decision=ACTIONED reportedUserId=15 suspended=true');
     expect(details.length).toBe(2);
     expect(vi.mocked(auditApi.search)).toHaveBeenCalledTimes(1);
+  });
+
+  it('tarih aralığı süzgeci isteğe ISO anı olarak gider', async () => {
+    render(<AuditPage />);
+    await screen.findByText('yonetici@test.com');
+
+    fireEvent.change(screen.getByLabelText('Başlangıç zamanı'), { target: { value: '2026-09-06T18:00' } });
+    fireEvent.change(screen.getByLabelText('Bitiş zamanı'), { target: { value: '2026-09-06T19:00' } });
+
+    await waitFor(() =>
+      expect(vi.mocked(auditApi.search).mock.lastCall?.[0]).toMatchObject({
+        from: new Date(2026, 8, 6, 18, 0).toISOString(),
+        to: new Date(2026, 8, 6, 19, 0).toISOString(),
+        page: 0,
+      }),
+    );
   });
 });

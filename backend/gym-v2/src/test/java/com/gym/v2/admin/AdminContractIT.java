@@ -7,6 +7,8 @@ import com.gym.v2.auth.entity.UserRole;
 import com.gym.v2.social.entity.ReportReason;
 import com.gym.v2.social.entity.ReportStatus;
 import com.gym.v2.social.entity.UserReport;
+import com.gym.v2.core.entity.AuditLog;
+import com.gym.v2.core.repository.AuditLogRepository;
 import com.gym.v2.finance.entity.PaymentTransaction;
 import com.gym.v2.finance.repository.PaymentTransactionRepository;
 import com.gym.v2.social.repository.UserReportRepository;
@@ -38,6 +40,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * </p>
  */
 class AdminContractIT extends IntegrationTestBase {
+
+	@Autowired
+	private AuditLogRepository auditLogRepository;
 
 	@Autowired
 	private UserReportRepository userReportRepository;
@@ -332,6 +337,103 @@ class AdminContractIT extends IntegrationTestBase {
 		mockMvc.perform(authed("/api/v1/admin/finance/payments?status=FAILED"))
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.data.totalElements").value(0));
+	}
+
+	@Test
+	void audit_dateRangeFilter_includesLowerBoundExcludesUpperBound() throws Exception {
+		auditLogRepository.saveAndFlush(new AuditLog("TEST_RANGE", "aralik@test.com", "127.0.0.1", "icerde",
+				Instant.parse("2026-09-06T15:30:00Z")));
+		auditLogRepository.saveAndFlush(new AuditLog("TEST_RANGE", "aralik@test.com", "127.0.0.1", "disarida",
+				Instant.parse("2026-09-06T17:30:00Z")));
+
+		mockMvc.perform(authed("/api/v1/admin/audit?email=aralik@test.com"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.data.totalElements").value(2));
+
+		mockMvc
+			.perform(authed(
+					"/api/v1/admin/audit?email=aralik@test.com&from=2026-09-06T15:00:00Z&to=2026-09-06T16:00:00Z"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.data.totalElements").value(1))
+			.andExpect(jsonPath("$.data.content[0].details").value("icerde"));
+
+		mockMvc
+			.perform(authed(
+					"/api/v1/admin/audit?email=aralik@test.com&from=2026-09-06T15:30:00Z&to=2026-09-06T17:30:00Z"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.data.totalElements").value(1))
+			.andExpect(jsonPath("$.data.content[0].details").value("icerde"));
+
+		mockMvc.perform(authed("/api/v1/admin/audit?from=bozuk")).andExpect(status().isBadRequest());
+	}
+
+	@Test
+	void payments_dateAndEmailFilters_keepUndatedPaymentsWhenUnfiltered() throws Exception {
+		AppUser coachUser = userRepository.findById(coachUserId).orElseThrow();
+		AppUser clientUser = userRepository.findById(clientUserId).orElseThrow();
+
+		PaymentTransaction pFailed = new PaymentTransaction();
+		pFailed.setClient(coachUser);
+		pFailed.setAmount(new BigDecimal("300.00"));
+		pFailed.setStatus("FAILED");
+		pFailed.setTransactionDate(Instant.parse("2026-09-10T09:00:00Z"));
+		paymentTransactionRepository.saveAndFlush(pFailed);
+
+		PaymentTransaction pUndated = new PaymentTransaction();
+		pUndated.setClient(clientUser);
+		pUndated.setAmount(new BigDecimal("100.00"));
+		pUndated.setStatus("PENDING");
+		pUndated.setTransactionDate(null);
+		paymentTransactionRepository.saveAndFlush(pUndated);
+
+		mockMvc.perform(authed("/api/v1/admin/finance/payments"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.data.totalElements").value(3));
+
+		mockMvc.perform(authed("/api/v1/admin/finance/payments?from=2026-09-01T00:00:00Z&to=2026-09-05T00:00:00Z"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.data.totalElements").value(1))
+			.andExpect(jsonPath("$.data.content[0].clientEmail").value("sporcu@test.com"));
+
+		mockMvc.perform(authed("/api/v1/admin/finance/payments?to=2026-09-05T00:00:00Z"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.data.totalElements").value(1));
+
+		mockMvc.perform(authed("/api/v1/admin/finance/payments?email=antrenor"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.data.totalElements").value(1))
+			.andExpect(jsonPath("$.data.content[0].status").value("FAILED"));
+
+		mockMvc
+			.perform(authed(
+					"/api/v1/admin/finance/payments?email=ANTRENOR&from=2026-09-01T00:00:00Z&to=2026-09-05T00:00:00Z"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.data.totalElements").value(0));
+	}
+
+	@Test
+	void revenue_countsOnlyFailedPaymentsAsFailed() throws Exception {
+		AppUser clientUser = userRepository.findById(clientUserId).orElseThrow();
+
+		PaymentTransaction pPending = new PaymentTransaction();
+		pPending.setClient(clientUser);
+		pPending.setAmount(new BigDecimal("200.00"));
+		pPending.setStatus("PENDING");
+		pPending.setTransactionDate(Instant.parse("2026-09-04T09:00:00Z"));
+		paymentTransactionRepository.saveAndFlush(pPending);
+
+		PaymentTransaction pFailed = new PaymentTransaction();
+		pFailed.setClient(clientUser);
+		pFailed.setAmount(new BigDecimal("200.00"));
+		pFailed.setStatus("FAILED");
+		pFailed.setTransactionDate(Instant.parse("2026-09-04T10:00:00Z"));
+		paymentTransactionRepository.saveAndFlush(pFailed);
+
+		mockMvc.perform(authed("/api/v1/admin/finance/revenue"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.data.successfulPayments").value(1))
+			.andExpect(jsonPath("$.data.failedPayments").value(1))
+			.andExpect(jsonPath("$.data.revenueTotal").value(750.00));
 	}
 
 }

@@ -37,12 +37,12 @@ export const usersApi = {
 
 export const financeApi = {
   revenue: () => request<AdminRevenue>('/api/v1/admin/finance/revenue'),
-  payments: (params: { status?: string; page?: number; size?: number }) =>
+  payments: (params: { status?: string; email?: string; from?: string; to?: string; page?: number; size?: number }) =>
     request<PageResponse<AdminPaymentRow>>(`/api/v1/admin/finance/payments${qs(params)}`),
 };
 
 export const auditApi = {
-  search: (params: { action?: string; email?: string; page?: number; size?: number }) =>
+  search: (params: { action?: string; email?: string; from?: string; to?: string; page?: number; size?: number }) =>
     request<PageResponse<AdminAuditRow>>(`/api/v1/admin/audit${qs(params)}`),
   actions: () => request<string[]>('/api/v1/admin/audit/actions'),
 };

@@ -18,6 +18,11 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class AdminFinanceService {
 
+	/** Süzgeç verilmeyen uç. Sorguya null an gönderilmez: bkz. AdminFinanceRepository. */
+	private static final Instant NO_LOWER_BOUND = Instant.EPOCH;
+
+	private static final Instant NO_UPPER_BOUND = Instant.parse("9999-12-31T23:59:59Z");
+
 	private final AdminFinanceRepository adminFinanceRepository;
 
 	private final Clock clock;
@@ -40,12 +45,19 @@ public class AdminFinanceService {
 	}
 
 	@Transactional(readOnly = true)
-	public Page<AdminPaymentRowDto> listPayments(String status, Pageable pageable) {
-		String normalized = (status == null || status.isBlank()) ? null : status;
+	public Page<AdminPaymentRowDto> listPayments(String status, String email, Instant from, Instant to,
+			Pageable pageable) {
+		boolean hasRange = from != null || to != null;
 
-		return adminFinanceRepository.listPayments(normalized, pageable)
+		return adminFinanceRepository
+			.listPayments(blankToNull(status), blankToNull(email), hasRange, from == null ? NO_LOWER_BOUND : from,
+					to == null ? NO_UPPER_BOUND : to, pageable)
 			.map(p -> new AdminPaymentRowDto(p.getId(), p.getClientEmail(), p.getAmount(), p.getStatus(),
 					ProjectionTime.toInstant(p.getTransactionDate()), p.getPackageName()));
+	}
+
+	private static String blankToNull(String value) {
+		return (value == null || value.isBlank()) ? null : value;
 	}
 
 }

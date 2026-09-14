@@ -3,7 +3,7 @@ import { auditApi } from '../api/admin';
 import { useResource } from '../hooks/useResource';
 import { SEARCH_DEBOUNCE_MS, useDebouncedValue } from '../hooks/useDebouncedValue';
 import type { AdminAuditRow } from '../api/types';
-import { EmptyState, ErrorLine, Loader, Pagination, SectionHead, formatDateTime } from '../components/Ui';
+import { EmptyState, ErrorLine, Loader, Pagination, SectionHead, formatDateTime, localDateTimeToIso } from '../components/Ui';
 
 // Listede olmayan eylem ham koduyla görünür: yeni eylem eklenince boş hücre çıkmasın.
 const ACTION_LABEL: Record<string, string> = {
@@ -29,13 +29,23 @@ export default function AuditPage() {
   const [action, setAction] = useState('');
   const [email, setEmail] = useState('');
   const debouncedEmail = useDebouncedValue(email, SEARCH_DEBOUNCE_MS);
+  const [since, setSince] = useState('');
+  const [until, setUntil] = useState('');
   const [page, setPage] = useState(0);
   const [selected, setSelected] = useState<AdminAuditRow | null>(null);
 
   const actions = useResource(() => auditApi.actions(), []);
   const logs = useResource(
-    () => auditApi.search({ action: action || undefined, email: debouncedEmail || undefined, page, size: 50 }),
-    [action, debouncedEmail, page],
+    () =>
+      auditApi.search({
+        action: action || undefined,
+        email: debouncedEmail || undefined,
+        from: localDateTimeToIso(since),
+        to: localDateTimeToIso(until),
+        page,
+        size: 50,
+      }),
+    [action, debouncedEmail, since, until, page],
   );
 
   return (
@@ -65,12 +75,30 @@ export default function AuditPage() {
             </option>
           ))}
         </select>
+        <input
+          type="datetime-local"
+          aria-label="Başlangıç zamanı"
+          value={since}
+          onChange={(e) => {
+            setSince(e.target.value);
+            setPage(0);
+          }}
+        />
+        <input
+          type="datetime-local"
+          aria-label="Bitiş zamanı"
+          value={until}
+          onChange={(e) => {
+            setUntil(e.target.value);
+            setPage(0);
+          }}
+        />
       </div>
 
       {/* Defterin silinebilir ya da degistirilebilir olmasi kaydin kendisini
           degersiz kilardi; bu yuzden panelde yalnizca okuma var. */}
       <p className="muted hint-line">
-        Bu defter değiştirilemez. Yönetim panelindeki her erişim ve her değişiklik buraya düşer.
+        Bu defter değiştirilemez. Yönetim panelindeki her erişim ve her değişiklik buraya düşer. Bitiş zamanı aralığa dahil değildir.
       </p>
 
       <ErrorLine text={logs.error} />

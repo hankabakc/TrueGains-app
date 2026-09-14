@@ -2,6 +2,7 @@ package com.gym.v2.admin.service;
 
 import com.gym.v2.admin.dto.AdminAuditRowDto;
 import com.gym.v2.admin.repository.AdminAuditRepository;
+import java.time.Instant;
 import java.util.List;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -12,6 +13,11 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class AdminAuditService {
 
+	/** Süzgeç verilmeyen uç. Sorguya null an gönderilmez: bkz. AdminAuditRepository. */
+	private static final Instant NO_LOWER_BOUND = Instant.EPOCH;
+
+	private static final Instant NO_UPPER_BOUND = Instant.parse("9999-12-31T23:59:59Z");
+
 	private final AdminAuditRepository adminAuditRepository;
 
 	public AdminAuditService(AdminAuditRepository adminAuditRepository) {
@@ -19,10 +25,12 @@ public class AdminAuditService {
 	}
 
 	@Transactional(readOnly = true)
-	public Page<AdminAuditRowDto> search(String action, String email, Pageable pageable) {
+	public Page<AdminAuditRowDto> search(String action, String email, Instant from, Instant to, Pageable pageable) {
 		String emailPattern = emailPattern(email);
+		Instant since = from == null ? NO_LOWER_BOUND : from;
+		Instant until = to == null ? NO_UPPER_BOUND : to;
 
-		return adminAuditRepository.search(blankToNull(action), emailPattern, pageable)
+		return adminAuditRepository.search(blankToNull(action), emailPattern, since, until, pageable)
 			.map(a -> new AdminAuditRowDto(a.getId(), a.getAction(), a.getUserEmail(), a.getIpAddress(), a.getDetails(),
 					a.getCreatedAt()));
 	}

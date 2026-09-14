@@ -6,6 +6,7 @@ import com.gym.v2.admin.service.AdminFinanceService;
 import com.gym.v2.core.response.ApiResponse;
 import com.gym.v2.core.response.PageResponse;
 import java.time.Clock;
+import java.time.Instant;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -38,9 +39,12 @@ public class AdminFinanceController {
 
 	@GetMapping("/payments")
 	public ApiResponse<PageResponse<AdminPaymentRowDto>> payments(@RequestParam(required = false) String status,
-			@RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
+			@RequestParam(required = false) String email, @RequestParam(required = false) Instant from,
+			@RequestParam(required = false) Instant to, @RequestParam(defaultValue = "0") int page,
+			@RequestParam(defaultValue = "20") int size) {
 		Pageable pageable = PageRequest.of(Math.max(page, 0), Math.clamp(size, 1, MAX_PAGE_SIZE));
-		return ApiResponse.success(PageResponse.from(adminFinanceService.listPayments(status, pageable)),
+		return ApiResponse.success(
+				PageResponse.from(adminFinanceService.listPayments(status, email, from, to, pageable)),
 				"Ödemeler listelendi.", clock.instant());
 	}
 

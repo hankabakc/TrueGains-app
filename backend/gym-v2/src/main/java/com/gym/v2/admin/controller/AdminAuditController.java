@@ -5,6 +5,7 @@ import com.gym.v2.admin.service.AdminAuditService;
 import com.gym.v2.core.response.ApiResponse;
 import com.gym.v2.core.response.PageResponse;
 import java.time.Clock;
+import java.time.Instant;
 import java.util.List;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -39,10 +40,11 @@ public class AdminAuditController {
 
 	@GetMapping
 	public ApiResponse<PageResponse<AdminAuditRowDto>> search(@RequestParam(required = false) String action,
-			@RequestParam(required = false) String email, @RequestParam(defaultValue = "0") int page,
+			@RequestParam(required = false) String email, @RequestParam(required = false) Instant from,
+			@RequestParam(required = false) Instant to, @RequestParam(defaultValue = "0") int page,
 			@RequestParam(defaultValue = "50") int size) {
 		Pageable pageable = PageRequest.of(Math.max(page, 0), Math.clamp(size, 1, MAX_PAGE_SIZE));
-		return ApiResponse.success(PageResponse.from(adminAuditService.search(action, email, pageable)),
+		return ApiResponse.success(PageResponse.from(adminAuditService.search(action, email, from, to, pageable)),
 				"Denetim kayıtları listelendi.", clock.instant());
 	}
 

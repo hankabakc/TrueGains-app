@@ -92,3 +92,27 @@ export function formatMoney(value: number | null | undefined): string {
   if (value === null || value === undefined) return '—';
   return `₺${Number(value).toLocaleString('tr-TR', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
 }
+
+/**
+ * `<input type="datetime-local">` değerini (yerel saat) ISO anına çevirir. Boş değer
+ * süzgeç yok demektir.
+ */
+export function localDateTimeToIso(value: string): string | undefined {
+  if (!value) return undefined;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
+}
+
+/**
+ * `<input type="date">` değerinin YEREL gün başını ISO anı olarak döner.
+ * `new Date('2026-09-01')` UTC gece yarısı sayılır (Türkiye'de 03:00); saat bu yüzden
+ * açıkça eklenir. `endExclusive` verilirse ertesi günün başı döner: sunucu üst sınırı
+ * hariç tutuyor, bitiş günü aralığa dahil olsun.
+ */
+export function localDateToIso(value: string, endExclusive = false): string | undefined {
+  if (!value) return undefined;
+  const date = new Date(`${value}T00:00`);
+  if (Number.isNaN(date.getTime())) return undefined;
+  if (endExclusive) date.setDate(date.getDate() + 1);
+  return date.toISOString();
+}

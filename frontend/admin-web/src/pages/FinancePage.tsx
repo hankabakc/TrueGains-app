@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { financeApi } from '../api/admin';
+import { SEARCH_DEBOUNCE_MS, useDebouncedValue } from '../hooks/useDebouncedValue';
 import { useResource } from '../hooks/useResource';
 import {
   Badge,
@@ -11,16 +12,38 @@ import {
   StatCard,
   formatDateTime,
   formatMoney,
+  localDateToIso,
+  type Tone,
 } from '../components/Ui';
+
+// Durumlar FinanceService'te yazılıyor: PENDING (ödeme başlatıldı), SUCCESS, FAILED.
+// Listede olmayan durum ham koduyla görünür.
+const PAYMENT_STATUS: Record<string, { label: string; tone: Tone }> = {
+  SUCCESS: { label: 'Başarılı', tone: 'ok' },
+  PENDING: { label: 'Bekliyor', tone: 'warn' },
+  FAILED: { label: 'Başarısız', tone: 'bad' },
+};
 
 export default function FinancePage() {
   const [status, setStatus] = useState('');
+  const [email, setEmail] = useState('');
+  const debouncedEmail = useDebouncedValue(email, SEARCH_DEBOUNCE_MS);
+  const [since, setSince] = useState('');
+  const [until, setUntil] = useState('');
   const [page, setPage] = useState(0);
 
   const revenue = useResource(() => financeApi.revenue(), []);
   const payments = useResource(
-    () => financeApi.payments({ status: status || undefined, page, size: 20 }),
-    [status, page],
+    () =>
+      financeApi.payments({
+        status: status || undefined,
+        email: debouncedEmail || undefined,
+        from: localDateToIso(since),
+        to: localDateToIso(until, true),
+        page,
+        size: 20,
+      }),
+    [status, debouncedEmail, since, until, page],
   );
 
   const r = revenue.data;
@@ -68,6 +91,32 @@ export default function FinancePage() {
           <option value="SUCCESS">Başarılı</option>
           <option value="FAILED">Başarısız</option>
         </select>
+        <input
+          placeholder="Kullanıcı e-postası…"
+          value={email}
+          onChange={(e) => {
+            setEmail(e.target.value);
+            setPage(0);
+          }}
+        />
+        <input
+          type="date"
+          aria-label="Başlangıç tarihi"
+          value={since}
+          onChange={(e) => {
+            setSince(e.target.value);
+            setPage(0);
+          }}
+        />
+        <input
+          type="date"
+          aria-label="Bitiş tarihi"
+          value={until}
+          onChange={(e) => {
+            setUntil(e.target.value);
+            setPage(0);
+          }}
+        />
       </div>
 
       <ErrorLine text={payments.error} />
@@ -96,7 +145,7 @@ export default function FinancePage() {
                     <td>{p.packageName ?? '—'}</td>
                     <td>{formatMoney(p.amount)}</td>
                     <td>
-                      <Badge tone={p.status === 'SUCCESS' ? 'ok' : 'bad'}>{p.status}</Badge>
+                      <Badge tone={PAYMENT_STATUS[p.status]?.tone ?? 'muted'}>{PAYMENT_STATUS[p.status]?.label ?? p.status}</Badge>
                     </td>
                   </tr>
                 ))}
