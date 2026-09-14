@@ -250,7 +250,7 @@ class _DaySelectorHeader extends StatelessWidget {
                 child: child,
               );
             },
-            onReorder: (oldIdx, newIdx) {
+            onReorderItem: (oldIdx, newIdx) {
               context.read<CreatePersonalProgramCubit>().reorderDays(oldIdx, newIdx);
             },
             itemBuilder: (context, index) {
@@ -394,8 +394,9 @@ class _ProgramBuilderList extends StatelessWidget {
                         ),
                   );
                 },
-                onReorder: (oldIdx, newIdx) => context.read<CreatePersonalProgramCubit>().reorderExercises(state.selectedDayIndex, oldIdx, newIdx),
+                onReorderItem: (oldIdx, newIdx) => context.read<CreatePersonalProgramCubit>().reorderExercises(state.selectedDayIndex, oldIdx, newIdx),
                 onReorderMuscleGroup: (oldIdx, newIdx) => context.read<CreatePersonalProgramCubit>().reorderMuscleGroups(state.selectedDayIndex, oldIdx, newIdx),
+                onReorderInGroup: (groupName, oldIdx, newIdx) => context.read<CreatePersonalProgramCubit>().reorderExerciseInGroup(state.selectedDayIndex, groupName, oldIdx, newIdx),
               ),
             ],
           ),

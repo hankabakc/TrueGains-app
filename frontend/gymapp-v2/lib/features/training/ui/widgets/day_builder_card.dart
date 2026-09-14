@@ -16,8 +16,9 @@ class DayBuilderCard extends StatelessWidget {
   final VoidCallback onAddExercises;
   final void Function(bool) onOffDayToggle;
   final void Function(int, WorkoutExercise) onEditExercise;
-  final void Function(int, int) onReorder;
+  final void Function(int, int) onReorderItem;
   final void Function(int, int)? onReorderMuscleGroup;
+  final void Function(String groupName, int oldIndex, int newIndex) onReorderInGroup;
   final VoidCallback onToggleMagnet;
   final void Function(String) onToggleGroup;
 
@@ -32,8 +33,9 @@ class DayBuilderCard extends StatelessWidget {
     required this.onAddExercises,
     required this.onOffDayToggle,
     required this.onEditExercise,
-    required this.onReorder,
+    required this.onReorderItem,
     this.onReorderMuscleGroup,
+    required this.onReorderInGroup,
     required this.onToggleMagnet,
     required this.onToggleGroup,
     this.isReadOnly = false,
@@ -201,7 +203,7 @@ class DayBuilderCard extends StatelessWidget {
       physics: const NeverScrollableScrollPhysics(),
       buildDefaultDragHandles: false,
       proxyDecorator: _proxyDecorator,
-      onReorder: (oldIdx, newIdx) {
+      onReorderItem: (oldIdx, newIdx) {
         if (onReorderMuscleGroup != null) {
           onReorderMuscleGroup!(oldIdx, newIdx);
         }
@@ -296,19 +298,8 @@ class DayBuilderCard extends StatelessWidget {
                       physics: const NeverScrollableScrollPhysics(),
                       buildDefaultDragHandles: false,
                       proxyDecorator: _proxyDecorator,
-                      onReorder: (oldGroupIdx, newGroupIdx) {
-                        final oldMainIdx = exercises.indexOf(groupExercises[oldGroupIdx]);
-                        int newMainIdx;
-
-                        if (newGroupIdx < groupExercises.length) {
-                          newMainIdx = exercises.indexOf(groupExercises[newGroupIdx]);
-                        } else {
-                          // Grubun sonuna taşıma durumunda, grubun son elemanından bir sonraki index
-                          newMainIdx = exercises.indexOf(groupExercises.last) + 1;
-                        }
-
-                        onReorder(oldMainIdx, newMainIdx);
-                      },
+                      onReorderItem: (oldGroupIdx, newGroupIdx) =>
+                          onReorderInGroup(groupName, oldGroupIdx, newGroupIdx),
                       children: groupExercises.asMap().entries.map((entry) {
                         final gIdx = entry.key;
                         final ex = entry.value;
@@ -346,7 +337,7 @@ class DayBuilderCard extends StatelessWidget {
       physics: const NeverScrollableScrollPhysics(),
       buildDefaultDragHandles: false,
       proxyDecorator: _proxyDecorator,
-      onReorder: onReorder,
+      onReorderItem: onReorderItem,
       children: exercises.asMap().entries.map((entry) {
         final idx = entry.key;
         final ex = entry.value;

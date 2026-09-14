@@ -26,7 +26,7 @@ ApiResponse<T> fail<T>(String message) =>
 void main() {
   late MockTrainingRepository repository;
 
-  WorkoutExercise exercise(int id, {int order = 0}) {
+  WorkoutExercise exercise(int id, {int order = 0, MuscleGroup? group}) {
     return WorkoutExercise(
       id: id,
       exerciseId: id,
@@ -35,6 +35,7 @@ void main() {
       targetReps: '10',
       orderIndex: order,
       logs: const [],
+      muscleGroup: group,
     );
   }
 
@@ -113,6 +114,104 @@ void main() {
       cubit.reorderDays(3, 0);
 
       expect(cubit.state.draftDays[0].exercises.single.exerciseId, 7);
+      await cubit.close();
+    });
+
+    test('gün aşağı taşınınca istenen yere oturur', () async {
+      final cubit = await newCubit();
+      cubit.addExercises(0, [exercise(1)]);
+      cubit.reorderDays(0, 2);
+      expect(cubit.state.draftDays[2].exercises.single.exerciseId, 1);
+      expect(cubit.state.draftDays.map((d) => d.dayOrder).toList(), [1, 2, 3, 4, 5, 6, 7]);
+      expect(cubit.state.selectedDayIndex, 2);
+      await cubit.close();
+    });
+  });
+
+  group('egzersiz sıralaması', () {
+    test('egzersiz aşağı taşınınca istenen yere oturur', () async {
+      final cubit = await newCubit();
+      cubit.addExercises(0, [exercise(1), exercise(2), exercise(3)]);
+      final ids = cubit.state.draftDays[0].exercises.map((e) => e.exerciseId).toList();
+
+      cubit.reorderExercises(0, 0, 2);
+
+      final newIds = cubit.state.draftDays[0].exercises.map((e) => e.exerciseId).toList();
+      expect(newIds, [ids[1], ids[2], ids[0]]);
+      final orders = cubit.state.draftDays[0].exercises.map((e) => e.orderIndex).toList();
+      expect(orders, [0, 1, 2]);
+      await cubit.close();
+    });
+
+    test('kas grubu aşağı taşınınca istenen yere oturur', () async {
+      final cubit = await newCubit();
+      cubit.addExercises(0, [
+        exercise(1, group: MuscleGroup.CHEST),
+        exercise(2, group: MuscleGroup.BACK),
+        exercise(3, group: MuscleGroup.SHOULDERS),
+      ]);
+      final names = cubit.state.draftDays[0].exercises.map((e) => e.muscleGroup!.turkishName).toList();
+
+      cubit.reorderMuscleGroups(0, 0, 2);
+
+      final newNames = cubit.state.draftDays[0].exercises.map((e) => e.muscleGroup!.turkishName).toList();
+      expect(newNames, [names[1], names[2], names[0]]);
+      await cubit.close();
+    });
+
+    test('grup içinde aşağı taşıma istenen yere oturur', () async {
+      final cubit = await newCubit();
+      cubit.addExercises(0, [
+        exercise(1, group: MuscleGroup.CHEST),
+        exercise(2, group: MuscleGroup.CHEST),
+        exercise(3, group: MuscleGroup.CHEST),
+      ]);
+      final ids = cubit.state.draftDays[0].exercises.map((e) => e.exerciseId).toList();
+
+      cubit.reorderExerciseInGroup(0, 'Göğüs', 0, 1);
+      expect(
+        cubit.state.draftDays[0].exercises.map((e) => e.exerciseId).toList(),
+        [ids[1], ids[0], ids[2]],
+      );
+
+      cubit.reorderExerciseInGroup(0, 'Göğüs', 0, 2);
+      expect(
+        cubit.state.draftDays[0].exercises.map((e) => e.exerciseId).toList(),
+        [ids[0], ids[2], ids[1]],
+      );
+      await cubit.close();
+    });
+
+    test('grup içi taşıma diğer grubun egzersizlerine dokunmaz', () async {
+      final cubit = await newCubit();
+      cubit.addExercises(0, [
+        exercise(1, group: MuscleGroup.CHEST),
+        exercise(2, group: MuscleGroup.CHEST),
+        exercise(3, group: MuscleGroup.BACK),
+      ]);
+      final chest = cubit.state.draftDays[0].exercises
+          .where((e) => e.muscleGroup == MuscleGroup.CHEST)
+          .map((e) => e.exerciseId)
+          .toList();
+      final back = cubit.state.draftDays[0].exercises
+          .where((e) => e.muscleGroup == MuscleGroup.BACK)
+          .map((e) => e.exerciseId)
+          .toList();
+
+      cubit.reorderExerciseInGroup(0, 'Göğüs', 0, 1);
+
+      final newChest = cubit.state.draftDays[0].exercises
+          .where((e) => e.muscleGroup == MuscleGroup.CHEST)
+          .map((e) => e.exerciseId)
+          .toList();
+      final newBack = cubit.state.draftDays[0].exercises
+          .where((e) => e.muscleGroup == MuscleGroup.BACK)
+          .map((e) => e.exerciseId)
+          .toList();
+
+      expect(newChest, [chest[1], chest[0]]);
+      expect(newBack, [back[0]]);
+      expect(cubit.state.draftDays[0].exercises, hasLength(3));
       await cubit.close();
     });
   });

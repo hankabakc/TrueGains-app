@@ -205,6 +205,7 @@ class CreatePersonalProgramCubit extends Cubit<CreatePersonalProgramState> {
     emit(state.copyWith(draftDays: newDays));
   }
 
+  /// [newIndex], öğe [oldIndex]'ten çıkarıldıktan sonraki yerdir (`onReorderItem` anlamı).
   void reorderDays(int oldIndex, int newIndex) {
     final newDays = List<WorkoutDay>.from(state.draftDays);
     final newOffDays = List<bool>.from(state.isOffDays);
@@ -212,8 +213,6 @@ class CreatePersonalProgramCubit extends Cubit<CreatePersonalProgramState> {
     final newExpanded = List<Set<String>>.from(
       state.expandedGroups.map((s) => Set<String>.from(s)),
     );
-
-    if (newIndex > oldIndex) newIndex -= 1;
 
     final dayItem = newDays.removeAt(oldIndex);
     newDays.insert(newIndex, dayItem);
@@ -257,6 +256,7 @@ class CreatePersonalProgramCubit extends Cubit<CreatePersonalProgramState> {
     ));
   }
 
+  /// [newIndex], öğe [oldIndex]'ten çıkarıldıktan sonraki yerdir (`onReorderItem` anlamı).
   void reorderMuscleGroups(int dayIndex, int oldIndex, int newIndex) {
     final newDays = List<WorkoutDay>.from(state.draftDays);
     final currentExs = List<WorkoutExercise>.from(newDays[dayIndex].exercises);
@@ -273,7 +273,6 @@ class CreatePersonalProgramCubit extends Cubit<CreatePersonalProgramState> {
     }
 
     // 2. Grup listesini reorder et
-    if (newIndex > oldIndex) newIndex -= 1;
     final draggedGroup = groups.removeAt(oldIndex);
     groups.insert(newIndex, draggedGroup);
 
@@ -318,12 +317,13 @@ class CreatePersonalProgramCubit extends Cubit<CreatePersonalProgramState> {
     emit(state.copyWith(draftDays: newDays));
   }
 
+  /// [newIndex], öğe [oldIndex]'ten çıkarıldıktan sonraki yerdir (`onReorderItem` anlamı).
   void reorderExercises(int dayIndex, int oldIndex, int newIndex) {
     final newDays = List<WorkoutDay>.from(state.draftDays);
     final currentExs = List<WorkoutExercise>.from(newDays[dayIndex].exercises);
 
-    if (newIndex > oldIndex) newIndex -= 1;
     final item = currentExs.removeAt(oldIndex);
+    newIndex = newIndex.clamp(0, currentExs.length);
     currentExs.insert(newIndex, item);
 
     // Tüm listenin orderIndex değerlerini yeni sıralamaya göre güncelle
@@ -356,6 +356,25 @@ class CreatePersonalProgramCubit extends Cubit<CreatePersonalProgramState> {
     );
 
     emit(state.copyWith(draftDays: newDays));
+  }
+
+  /// Mıknatıs açıkken kas grubu içindeki sürükle-bırak. Grup içi sırayı günün egzersiz
+  /// listesindeki sıraya çevirip [reorderExercises]'e verir. [newGroupIndex], öğe
+  /// çıkarıldıktan sonraki grup içi yerdir (`onReorderItem` anlamı).
+  void reorderExerciseInGroup(int dayIndex, String groupName, int oldGroupIndex, int newGroupIndex) {
+    if (oldGroupIndex == newGroupIndex) return;
+
+    final exercises = state.draftDays[dayIndex].exercises;
+    final group = exercises.where((ex) => (ex.muscleGroup?.turkishName ?? 'Diğer') == groupName).toList();
+    final oldIndex = exercises.indexOf(group[oldGroupIndex]);
+
+    final others = List<WorkoutExercise>.from(group)..removeAt(oldGroupIndex);
+    final remaining = List<WorkoutExercise>.from(exercises)..removeAt(oldIndex);
+    final newIndex = newGroupIndex < others.length
+        ? remaining.indexOf(others[newGroupIndex])
+        : remaining.indexOf(others.last) + 1;
+
+    reorderExercises(dayIndex, oldIndex, newIndex);
   }
 
   void _sortExercisesByGroup(int index, {List<WorkoutDay>? updatedDays, List<bool>? updatedMagnet}) {
