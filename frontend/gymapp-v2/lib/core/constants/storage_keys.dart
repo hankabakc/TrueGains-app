@@ -5,4 +5,7 @@ class StorageKeys {
 
   /// Çevrimdışı okuma önbelleğinin (Hive) AES anahtarı.
   static const String offlineCacheKey = 'offlineCacheKey';
+
+  /// Çevrimdışı yazma kuyruğunun (Hive) AES anahtarı.
+  static const String syncQueueKey = 'syncQueueKey';
 }

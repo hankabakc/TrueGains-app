@@ -116,7 +116,12 @@ Future<void> initDependencies() async {
     () => SyncManager(
       networkInfo: sl<NetworkInfo>(),
       dioClient: sl<DioClient>(),
-      syncBox: Hive.box<String>('sync_queue'),
+      syncBox: Hive.box<String>(SyncManager.boxName),
+      // Kuyruk kaydının sahibi: o an oturum açmış kullanıcı (G-68).
+      currentUserId: () {
+        final AuthState state = sl<AuthBloc>().state;
+        return state is AuthAuthenticated ? state.auth.id : null;
+      },
     ),
   );
   sl.registerLazySingleton<OfflineCache>(() => OfflineCache());

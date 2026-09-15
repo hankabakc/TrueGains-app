@@ -50,6 +50,7 @@ void main() {
     sl.reset();
 
     mockAuthRepository = MockAuthRepository();
+    when(() => mockAuthRepository.syncPending()).thenAnswer((_) async {});
 
     when(() => mockAuthRepository.register(any())).thenAnswer(
       (_) async => ApiResponse<AuthModel>(

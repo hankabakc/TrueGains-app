@@ -41,6 +41,7 @@ void main() {
 
   setUp(() {
     mockAuthRepository = MockAuthRepository();
+    when(() => mockAuthRepository.syncPending()).thenAnswer((_) async {});
 
     if (sl.isRegistered<ChatBloc>()) {
       sl.unregister<ChatBloc>();
@@ -156,6 +157,83 @@ void main() {
     ],
     verify: (_) {
       verify(() => mockAuthRepository.logout(syncPending: false)).called(1);
+    },
+  );
+
+  test('giriş başarılıysa bekleyen kayıtlar kullanıcı belli olduktan sonra gönderilir', () async {
+    when(() => mockAuthRepository.login('test@example.com', 'Password123!'))
+        .thenAnswer((_) async => ApiResponse(
+              success: true,
+              message: 'Giriş başarılı',
+              timestamp: DateTime.now().toIso8601String(),
+              data: testAuthModel,
+            ));
+
+    final bloc = AuthBloc(mockAuthRepository);
+    AuthState? stateAtSync;
+    when(() => mockAuthRepository.syncPending()).thenAnswer((_) async {
+      stateAtSync = bloc.state;
+    });
+
+    bloc.add(const LoginSubmitted('test@example.com', 'Password123!'));
+    await Future<void>.delayed(Duration.zero);
+
+    expect(stateAtSync, isA<AuthAuthenticated>());
+    verify(() => mockAuthRepository.syncPending()).called(1);
+    await bloc.close();
+  });
+
+  blocTest<AuthBloc, AuthState>(
+    'giriş başarısızsa bekleyen kayıtlar gönderilmez',
+    setUp: () {
+      when(() => mockAuthRepository.login('test@example.com', 'wrong_pass'))
+          .thenAnswer((_) async => ApiResponse(
+                success: false,
+                message: 'Geçersiz e-posta veya şifre',
+                timestamp: DateTime.now().toIso8601String(),
+              ));
+    },
+    build: () => AuthBloc(mockAuthRepository),
+    act: (bloc) => bloc.add(const LoginSubmitted('test@example.com', 'wrong_pass')),
+    expect: () => [
+      AuthLoading(),
+      const AuthError('Geçersiz e-posta veya şifre'),
+    ],
+    verify: (_) {
+      verifyNever(() => mockAuthRepository.syncPending());
+    },
+  );
+
+  blocTest<AuthBloc, AuthState>(
+    'açılışta oturum geri gelirse bekleyen kayıtlar gönderilir',
+    setUp: () {
+      when(() => mockAuthRepository.restoreSession())
+          .thenAnswer((_) async => ApiResponse(
+                success: true,
+                message: 'Oturum geri yüklendi',
+                timestamp: DateTime.now().toIso8601String(),
+                data: testAuthModel,
+              ));
+    },
+    build: () => AuthBloc(mockAuthRepository),
+    act: (bloc) => bloc.add(AppStarted()),
+    expect: () => [
+      AuthAuthenticated(testAuthModel),
+    ],
+    verify: (_) {
+      verify(() => mockAuthRepository.syncPending()).called(1);
+    },
+  );
+
+  blocTest<AuthBloc, AuthState>(
+    'OTP doğrulanınca bekleyen kayıtlar gönderilir',
+    build: () => AuthBloc(mockAuthRepository),
+    act: (bloc) => bloc.add(AuthVerified(testAuthModel)),
+    expect: () => [
+      AuthAuthenticated(testAuthModel),
+    ],
+    verify: (_) {
+      verify(() => mockAuthRepository.syncPending()).called(1);
     },
   );
 }

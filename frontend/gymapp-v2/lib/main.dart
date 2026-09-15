@@ -8,6 +8,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'package:gymapp_v2/core/di/injection_container.dart';
 import 'package:gymapp_v2/core/network/offline_cache.dart';
+import 'package:gymapp_v2/core/network/sync_manager.dart';
 import 'package:gymapp_v2/core/util/app_bloc_observer.dart';
 import 'package:gymapp_v2/core/util/app_logger.dart';
 import 'package:gymapp_v2/core/theme/app_theme.dart';
@@ -60,7 +61,7 @@ void main() async {
     await Firebase.initializeApp();
     FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
     await Hive.initFlutter();
-    await Hive.openBox<String>('sync_queue');
+    await openSyncQueueBox(sl<FlutterSecureStorage>());
     await openOfflineCacheBox(sl<FlutterSecureStorage>());
     sl<LastRouteStore>().attach(appRouter);
     // Açılışta oturumu sessizce geri yüklemeyi tetikle ("oturumda kal").

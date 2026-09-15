@@ -97,6 +97,8 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       final result = await _repository.restoreSession();
       if (result.success && result.data != null && result.data!.accessToken.isNotEmpty) {
         emit(AuthAuthenticated(result.data!));
+        // Kullanıcı artık belli: ona ait bekleyen çevrimdışı kayıtlar gönderilir.
+        await _repository.syncPending();
       } else {
         emit(AuthUnauthenticated());
       }
@@ -107,6 +109,8 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       final result = await _repository.login(event.email, event.password);
       if (result.success && result.data != null) {
         emit(AuthAuthenticated(result.data!));
+        // Kullanıcı artık belli: ona ait bekleyen çevrimdışı kayıtlar gönderilir.
+        await _repository.syncPending();
       } else if (result.statusCode == 403) {
         // Telefon doğrulanmamış: OTP ekranına yönlendir (token verilmedi).
         emit(AuthOtpRequired(event.email));
@@ -126,8 +130,10 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       }
     });
 
-    on<AuthVerified>((event, emit) {
+    on<AuthVerified>((event, emit) async {
       emit(AuthAuthenticated(event.auth));
+      // Kullanıcı artık belli: ona ait bekleyen çevrimdışı kayıtlar gönderilir.
+      await _repository.syncPending();
     });
 
     on<LogoutRequested>((event, emit) async {

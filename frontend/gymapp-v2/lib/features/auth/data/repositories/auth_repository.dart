@@ -54,4 +54,7 @@ class AuthRepository {
     // Okuma önbelleği sunucudaki verinin kopyasıdır; silinmesi veri kaybı değildir.
     await _offlineCache.clear();
   }
+
+  /// Oturum açıldıktan sonra bu kullanıcıya ait bekleyen çevrimdışı kayıtları gönderir.
+  Future<void> syncPending() => _syncManager.syncPendingData();
 }

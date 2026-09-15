@@ -150,6 +150,12 @@ void main() {
     expect(result.message, equals('Geçersiz e-posta veya şifre'));
   });
 
+  test('syncPending bekleyen kuyruk gönderimini tetikler', () async {
+    await authRepository.syncPending();
+
+    verify(() => mockSyncManager.syncPendingData()).called(1);
+  });
+
   group('çıkış', () {
     setUp(() {
       when(() => mockSecureStorage.read(key: StorageKeys.accessToken))

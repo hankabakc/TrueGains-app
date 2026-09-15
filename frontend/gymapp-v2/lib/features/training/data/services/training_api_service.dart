@@ -8,6 +8,9 @@ import 'package:gymapp_v2/features/training/models/weekly_progress.dart';
 import 'package:gymapp_v2/features/training/models/exercise_progress.dart';
 
 class TrainingApiService {
+  /// Antrenman oturumu ucu; çevrimdışı kuyruk da aynı sabiti kullanır (K4-09).
+  static const String sessionsPath = '/training/sessions';
+
   final DioClient _dioClient;
 
   TrainingApiService(this._dioClient);
@@ -98,7 +101,7 @@ class TrainingApiService {
   Future<ApiResponse<void>> logWorkoutSession(Map<String, dynamic> data) async {
     try {
       final response = await _dioClient.dio.post<Map<String, dynamic>>(
-        '/training/sessions',
+        sessionsPath,
         data: data,
       );
       return ApiResponse<void>.fromJson(response.data!, (json) {});

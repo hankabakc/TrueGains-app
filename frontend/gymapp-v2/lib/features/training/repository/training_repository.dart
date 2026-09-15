@@ -93,7 +93,7 @@ class TrainingRepository {
       return _apiService.logWorkoutSession(payload);
     } else {
       // Çevrimdışı: Kuyruğa ekle
-      await _syncManager.addToQueue('/training/session', payload);
+      await _syncManager.addToQueue(TrainingApiService.sessionsPath, payload);
       // Başarılıymış gibi dön (UI'ın devam edebilmesi için)
       return ApiResponse(
         success: true,

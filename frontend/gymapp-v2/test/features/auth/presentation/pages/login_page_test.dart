@@ -24,6 +24,7 @@ void main() {
 
   setUp(() {
     mockAuthRepository = MockAuthRepository();
+    when(() => mockAuthRepository.syncPending()).thenAnswer((_) async {});
     authBloc = AuthBloc(mockAuthRepository);
 
     if (sl.isRegistered<LoginFormCubit>()) {
