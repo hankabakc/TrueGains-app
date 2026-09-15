@@ -32,6 +32,7 @@ STAMP=$(date +%Y%m%d-%H%M%S)
 FILE="$OUT_DIR/${DB_NAME}-${STAMP}.sql.gz"
 
 # Düz SQL + gzip; özel biçim (-Fc) yerine tercih edildi çünkü tek dosya, gözle
+# okunabilir ve pg_restore sürüm uyumu derdi çıkarmıyor.
 if [ -n "${PGHOST:-}" ]; then
 	# Ağ kipi (docker-compose.yml → db-backup): pg_dump PGHOST ve PGPASSWORD'u ortamdan okur.
 	pg_dump -U "$DB_USER" -d "$DB_NAME" | gzip >"$FILE"
