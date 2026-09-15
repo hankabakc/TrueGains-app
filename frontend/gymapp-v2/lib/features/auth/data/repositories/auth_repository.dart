@@ -1,11 +1,15 @@
 import 'package:gymapp_v2/core/network/api_response.dart';
+import 'package:gymapp_v2/core/network/offline_cache.dart';
+import 'package:gymapp_v2/core/network/sync_manager.dart';
 import '../models/auth_model.dart';
 import '../services/auth_api_service.dart';
 
 class AuthRepository {
   final AuthApiService _apiService;
+  final SyncManager _syncManager;
+  final OfflineCache _offlineCache;
 
-  AuthRepository(this._apiService);
+  AuthRepository(this._apiService, this._syncManager, this._offlineCache);
 
   Future<ApiResponse<AuthModel>> login(String email, String password) {
     return _apiService.login(email, password);
@@ -39,7 +43,15 @@ class AuthRepository {
     return _apiService.resetPassword(email, code, newPassword);
   }
 
-  Future<void> logout() {
-    return _apiService.logout();
+  /// Çıkış. [syncPending] açıkken bekleyen çevrimdışı kayıtlar, jeton hâlâ cihazdayken önce
+  /// gönderilmeye çalışılır; gönderilemeyenler kuyrukta kalır, silinmez. Oturum düştüğünde
+  /// ya da hesap silindiğinde jeton ölüdür, gönderim denenmez (false).
+  Future<void> logout({bool syncPending = true}) async {
+    if (syncPending) {
+      await _syncManager.syncPendingData();
+    }
+    await _apiService.logout();
+    // Okuma önbelleği sunucudaki verinin kopyasıdır; silinmesi veri kaybı değildir.
+    await _offlineCache.clear();
   }
 }

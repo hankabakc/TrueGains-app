@@ -15,6 +15,9 @@ class DioClient {
   static final DioClient _instance = DioClient._internal();
   late final Dio dio;
 
+  /// Yenileme çerezinin kalıcı deposu; çıkışta AuthApiService.logout siler.
+  late final PersistCookieJar cookieJar;
+
   factory DioClient() {
     if (!_instance._initialized) {
       _instance._init();
@@ -41,7 +44,8 @@ class DioClient {
 
     // Cookie desteği eklenir. Refresh-token cookie'si "oturumda kal" için
     // şifreli/kalıcı saklanır (uygulama yeniden açılışında hayatta kalır).
-    dio.interceptors.add(CookieManager(PersistCookieJar(storage: SecureCookieStorage())));
+    cookieJar = PersistCookieJar(storage: SecureCookieStorage());
+    dio.interceptors.add(CookieManager(cookieJar));
 
     // Standart Auth/Security Katmanı
     dio.interceptors.add(AuthInterceptor(dio));

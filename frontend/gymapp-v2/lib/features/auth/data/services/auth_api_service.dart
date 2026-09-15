@@ -4,6 +4,7 @@ import '../../../../core/network/api_response.dart';
 import '../../../../core/network/dio_client.dart';
 import '../../../../core/network/device_service.dart';
 import '../../../../core/constants/storage_keys.dart';
+import '../../../../core/constants/network_constants.dart';
 import '../models/auth_model.dart';
 
 class AuthApiService {
@@ -193,15 +194,27 @@ class AuthApiService {
     }
   }
 
+  /// Cihazdaki oturumu kapatır ve sunucuya bildirir.
+  ///
+  /// Sıra bilinçli: jeton önce okunur, sonra cihazdan jeton ve yenileme çerezi silinir,
+  /// sunucu çağrısı okunan jetonla yapılır. Silme ağı beklemez; sunucuya ulaşılamasa da
+  /// uygulama yeniden açıldığında oturum geri gelmez. Başlık açıkça verilir, çünkü
+  /// AuthInterceptor jetonu depodan okur ve o an depo boştur.
   Future<void> logout() async {
+    final String? token = await _secureStorage.read(key: StorageKeys.accessToken);
     await _secureStorage.delete(key: StorageKeys.accessToken);
+    await _dioClient.cookieJar.deleteAll();
+    if (token == null) return;
     try {
-      // ignore: unused_local_variable
-      final response = await _dioClient.dio.post<Map<String, dynamic>>(
+      await _dioClient.dio.post<Map<String, dynamic>>(
         '/auth/logout',
+        options: Options(
+          headers: {NetworkConstants.authorizationHeader: '${NetworkConstants.bearerPrefix}$token'},
+        ),
       );
-    } catch (e) {
-      // Logout sırasında hata olsa bile local tokenları silmişizdir.
+    } catch (_) {
+      // Sunucuya ulaşılamadı: cihazdaki oturum yine kapandı; sunucudaki yenileme jetonu
+      // kendi süresi dolunca geçersizleşir.
     }
   }
 

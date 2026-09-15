@@ -1,13 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
-import 'package:gymapp_v2/core/di/injection_container.dart';
 import 'package:gymapp_v2/core/theme/app_colors.dart';
 import 'package:gymapp_v2/core/theme/app_dimens.dart';
 import 'package:gymapp_v2/core/theme/app_text_styles.dart';
 import 'package:gymapp_v2/core/widgets/glass_container.dart';
 import 'package:gymapp_v2/core/widgets/network_avatar.dart';
-import 'package:gymapp_v2/features/auth/data/repositories/auth_repository.dart';
 import 'package:gymapp_v2/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:gymapp_v2/features/auth/data/models/user_role.dart';
 import 'package:gymapp_v2/features/profile/presentation/bloc/profile_bloc.dart';
@@ -189,13 +187,11 @@ class ProfileSettingsPage extends StatelessWidget {
         elevation: 0,
       ),
       body: BlocConsumer<ProfileBloc, ProfileState>(
-        listener: (context, state) async {
+        listener: (context, state) {
           if (state is AccountDeleteSuccess) {
-            // Hesap sunucuda silindi; elimizdeki token artık ölü. logout() önce yerel token'ı
-            // siliyor ve uçtaki hatayı yutuyor, bu yüzden silme sonrasında güvenle çağrılabilir.
-            await sl<AuthRepository>().logout();
-            if (!context.mounted) return;
-            context.read<AuthBloc>().add(LogoutRequested());
+            // Hesap sunucuda silindi, jeton ölü. Çıkış bekleyen kayıtları göndermeye çalışmaz;
+            // cihazdaki jeton, çerez ve önbelleği temizler (AuthRepository.logout).
+            context.read<AuthBloc>().add(const LogoutRequested(syncPending: false));
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(content: Text('Hesabın silindi.')),
             );

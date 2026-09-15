@@ -217,4 +217,15 @@ void main() {
     await testDio.get<Map<String, dynamic>>('/test-status');
     expect(notifier.value, isNull);
   });
+
+  test('clear kutudaki bütün kayıtları siler', () async {
+    final cache = OfflineCache();
+    await cache.write('/profile', {'name': 'Ali'});
+    await cache.write('/social/chat/conversations', ['sohbet']);
+
+    await cache.clear();
+
+    expect(Hive.box<String>(OfflineCache.boxName).isEmpty, isTrue);
+    expect(cache.read('/profile'), isNull);
+  });
 }

@@ -117,7 +117,7 @@ class AuthInterceptor extends Interceptor {
         await _storage.delete(key: StorageKeys.accessToken);
 
         // Oturumu kapat ve login sayfasına yönlendirilmeyi tetikle
-        sl<AuthBloc>().add(LogoutRequested());
+        sl<AuthBloc>().add(const LogoutRequested(syncPending: false));
       }
     }
     return handler.next(err);

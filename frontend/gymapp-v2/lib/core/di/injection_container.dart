@@ -127,7 +127,7 @@ Future<void> initDependencies() async {
 
   // --- SERVICES / REPOSITORIES ---
   sl.registerLazySingleton(() => AuthApiService(sl<DioClient>(), sl<FlutterSecureStorage>()));
-  sl.registerLazySingleton(() => AuthRepository(sl<AuthApiService>()));
+  sl.registerLazySingleton(() => AuthRepository(sl<AuthApiService>(), sl<SyncManager>(), sl<OfflineCache>()));
   sl.registerLazySingleton(() => TrainingApiService(sl<DioClient>()));
   sl.registerLazySingleton(
     () => TrainingRepository(

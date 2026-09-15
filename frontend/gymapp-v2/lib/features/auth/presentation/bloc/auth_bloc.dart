@@ -65,7 +65,13 @@ class RegisterSubmitted extends AuthEvent {
   List<Object?> get props => [data];
 }
 
-class LogoutRequested extends AuthEvent {}
+class LogoutRequested extends AuthEvent {
+  /// false: oturum düştü ya da hesap silindi; bekleyen kayıtlar gönderilmeye çalışılmaz.
+  final bool syncPending;
+  const LogoutRequested({this.syncPending = true});
+  @override
+  List<Object?> get props => [syncPending];
+}
 
 /// Uygulama açılışında tetiklenir: kalıcı refresh cookie'si ile oturumu
 /// sessizce geri yüklemeyi dener ("oturumda kal").
@@ -124,7 +130,10 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       emit(AuthAuthenticated(event.auth));
     });
 
-    on<LogoutRequested>((event, emit) {
+    on<LogoutRequested>((event, emit) async {
+      // Durum temizlik bittikten sonra yayımlanır: önce yayımlansa giriş ekranı açılır ve
+      // arkada süren temizlik, o arada giriş yapan kullanıcının jetonunu silebilirdi.
+      await _repository.logout(syncPending: event.syncPending);
       // ChatBloc singleton'ı sıfırla (LazySingleton olduğu için bir sonraki kullanımda taze başlar)
       sl.resetLazySingleton<ChatBloc>();
       sl.resetLazySingleton<NavigationCubit>();

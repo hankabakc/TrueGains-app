@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:bloc_test/bloc_test.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gymapp_v2/core/di/injection_container.dart';
@@ -103,11 +105,57 @@ void main() {
   );
 
   blocTest<AuthBloc, AuthState>(
-    'çıkış yapma isteği gönderildiğinde → AuthUnauthenticated durumu yayımlanır',
+    'çıkış: repository.logout çağrılır, sonra AuthUnauthenticated yayımlanır',
+    setUp: () {
+      when(() => mockAuthRepository.logout(syncPending: any(named: 'syncPending')))
+          .thenAnswer((_) async {});
+    },
     build: () => AuthBloc(mockAuthRepository),
-    act: (bloc) => bloc.add(LogoutRequested()),
+    act: (bloc) => bloc.add(const LogoutRequested()),
     expect: () => [
       AuthUnauthenticated(),
     ],
+    verify: (_) {
+      verify(() => mockAuthRepository.logout(syncPending: true)).called(1);
+    },
+  );
+
+  test('çıkış: temizlik bitmeden AuthUnauthenticated yayımlanmaz', () async {
+    final completer = Completer<void>();
+    when(() => mockAuthRepository.logout(syncPending: any(named: 'syncPending')))
+        .thenAnswer((_) => completer.future);
+
+    final bloc = AuthBloc(mockAuthRepository);
+    final states = <AuthState>[];
+    final sub = bloc.stream.listen(states.add);
+
+    bloc.add(const LogoutRequested());
+    await Future<void>.delayed(Duration.zero);
+
+    expect(states, isEmpty);
+
+    completer.complete();
+    await Future<void>.delayed(Duration.zero);
+
+    expect(states, [isA<AuthUnauthenticated>()]);
+
+    await sub.cancel();
+    await bloc.close();
+  });
+
+  blocTest<AuthBloc, AuthState>(
+    'oturum düşünce çıkış kuyruğu göndermeden yapılır',
+    setUp: () {
+      when(() => mockAuthRepository.logout(syncPending: any(named: 'syncPending')))
+          .thenAnswer((_) async {});
+    },
+    build: () => AuthBloc(mockAuthRepository),
+    act: (bloc) => bloc.add(const LogoutRequested(syncPending: false)),
+    expect: () => [
+      AuthUnauthenticated(),
+    ],
+    verify: (_) {
+      verify(() => mockAuthRepository.logout(syncPending: false)).called(1);
+    },
   );
 }

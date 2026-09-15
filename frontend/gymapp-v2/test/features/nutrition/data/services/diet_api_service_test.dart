@@ -7,6 +7,9 @@ class FakeDioClient implements DioClient {
   @override
   Dio dio;
 
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+
   FakeDioClient(this.dio);
 }
 
