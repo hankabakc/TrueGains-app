@@ -323,7 +323,6 @@ class CreatePersonalProgramCubit extends Cubit<CreatePersonalProgramState> {
     final currentExs = List<WorkoutExercise>.from(newDays[dayIndex].exercises);
 
     final item = currentExs.removeAt(oldIndex);
-    newIndex = newIndex.clamp(0, currentExs.length);
     currentExs.insert(newIndex, item);
 
     // Tüm listenin orderIndex değerlerini yeni sıralamaya göre güncelle

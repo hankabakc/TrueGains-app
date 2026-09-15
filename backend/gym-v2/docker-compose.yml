@@ -33,6 +33,35 @@ services:
     # açılış döngüsüne girdi.
     restart: unless-stopped
 
+  # Günlük veritabanı yedeği (scripts/db-backup.sh). PGHOST verildiği için betik docker exec
+  # yerine ağdan bağlanır. Yedekler depo kökündeki backups/ klasörüne düşer (git dışı);
+  # db-restore-drill.sh provayı oradan okur. Saat Europe/Istanbul; BACKUP_CRON ile değişir.
+  db-backup:
+    image: postgres:17-alpine
+    container_name: gymapp_v2_db_backup
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGHOST: db
+      PGDATABASE: gymapp_v2
+      PGUSER: gymapp_admin
+      PGPASSWORD: ${DB_PASSWORD}
+      BACKUP_DIR: /backups
+      BACKUP_KEEP_DAYS: "14"
+      BACKUP_CRON: "${BACKUP_CRON:-0 3 * * *}"
+      TZ: Europe/Istanbul
+    volumes:
+      # Klasör bağlanır, tek dosya değil: tek dosyalık bağlama host'taki düzenlemeyi göstermeyebilir.
+      - ../../scripts:/scripts:ro
+      - ../../backups:/backups
+    # crond PID 1 olarak koşar; işin çıktısı /proc/1/fd/1'e yazılınca docker logs'a (ve Loki'ye) düşer.
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - 'echo "$$BACKUP_CRON sh /scripts/db-backup.sh >/proc/1/fd/1 2>/proc/1/fd/2" | crontab - && exec crond -f -d 8'
+    logging: *default-logging
+    restart: unless-stopped
+
   backend:
     build:
       context: .
@@ -84,7 +113,7 @@ services:
     volumes:
       - gymapp_v2_uploads:/var/lib/gymapp/uploads
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:9090/actuator/health | grep -q UP"]
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9090/actuator/health | grep -q UP"]
       interval: 15s
       timeout: 5s
       retries: 10
