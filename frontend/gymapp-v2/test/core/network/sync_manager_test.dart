@@ -234,4 +234,211 @@ void main() {
     verify(() => dio.post<Map<String, dynamic>>('/kayit', data: any(named: 'data'))).called(1);
     expect(box.isEmpty, isTrue);
   });
+
+  DioException httpError(String path, int status, {String? message}) => DioException(
+        requestOptions: RequestOptions(path: path),
+        type: DioExceptionType.badResponse,
+        response: Response<Map<String, dynamic>>(
+          requestOptions: RequestOptions(path: path),
+          statusCode: status,
+          data: message == null ? null : <String, dynamic>{'message': message},
+        ),
+      );
+
+  test('sunucu kalıcı reddederse kayıt aktarılamadı olarak işaretlenir, silinmez', () async {
+    when(() => dio.post<Map<String, dynamic>>(any(), data: any(named: 'data'))).thenThrow(
+      httpError('/kayit', 404, message: 'Egzersiz bulunamadı veya yetkiniz yok.'),
+    );
+
+    final box = await Hive.openBox<String>(SyncManager.boxName);
+    int? user = 1;
+    final manager = SyncManager(
+      networkInfo: networkInfo,
+      dioClient: dioClient,
+      syncBox: box,
+      currentUserId: () => user,
+    );
+
+    await manager.addToQueue('/kayit', {'localId': 'L1'});
+    await manager.syncPendingData();
+
+    expect(box.length, equals(1));
+    final item = jsonDecode(box.values.single) as Map<String, dynamic>;
+    expect(item['status'], equals('rejected'));
+    expect(item['reason'], equals('Egzersiz bulunamadı veya yetkiniz yok.'));
+    expect(manager.rejectedCount.value, equals(1));
+  });
+
+  test('reddedilen kayıt kendiliğinden yeniden gönderilmez', () async {
+    when(() => dio.post<Map<String, dynamic>>(any(), data: any(named: 'data'))).thenThrow(
+      httpError('/kayit', 404, message: 'Egzersiz bulunamadı veya yetkiniz yok.'),
+    );
+
+    final box = await Hive.openBox<String>(SyncManager.boxName);
+    int? user = 1;
+    final manager = SyncManager(
+      networkInfo: networkInfo,
+      dioClient: dioClient,
+      syncBox: box,
+      currentUserId: () => user,
+    );
+
+    await manager.addToQueue('/kayit', {'localId': 'L1'});
+    await manager.syncPendingData();
+    await manager.syncPendingData();
+
+    verify(() => dio.post<Map<String, dynamic>>('/kayit', data: any(named: 'data'))).called(1);
+  });
+
+  test('geçici sunucu hatasında kayıt bekler ve sonra gider', () async {
+    when(() => dio.post<Map<String, dynamic>>(any(), data: any(named: 'data'))).thenThrow(
+      httpError('/kayit', 503),
+    );
+
+    final box = await Hive.openBox<String>(SyncManager.boxName);
+    int? user = 1;
+    final manager = SyncManager(
+      networkInfo: networkInfo,
+      dioClient: dioClient,
+      syncBox: box,
+      currentUserId: () => user,
+    );
+
+    await manager.addToQueue('/kayit', {});
+    await manager.syncPendingData();
+
+    final item = jsonDecode(box.values.single) as Map<String, dynamic>;
+    expect(item['status'], isNull);
+    expect(manager.rejectedCount.value, equals(0));
+
+    when(() => dio.post<Map<String, dynamic>>(any(), data: any(named: 'data'))).thenAnswer(
+      (inv) async => Response<Map<String, dynamic>>(
+        requestOptions: RequestOptions(path: inv.positionalArguments.first as String),
+        statusCode: 200,
+      ),
+    );
+
+    await manager.syncPendingData();
+    expect(box.isEmpty, isTrue);
+  });
+
+  test('oturum hatası (401) ret sayılmaz', () async {
+    when(() => dio.post<Map<String, dynamic>>(any(), data: any(named: 'data'))).thenThrow(
+      httpError('/kayit', 401),
+    );
+
+    final box = await Hive.openBox<String>(SyncManager.boxName);
+    int? user = 1;
+    final manager = SyncManager(
+      networkInfo: networkInfo,
+      dioClient: dioClient,
+      syncBox: box,
+      currentUserId: () => user,
+    );
+
+    await manager.addToQueue('/kayit', {});
+    await manager.syncPendingData();
+
+    final item = jsonDecode(box.values.single) as Map<String, dynamic>;
+    expect(item['status'], isNull);
+    expect(manager.rejectedCount.value, equals(0));
+  });
+
+  test('tekrar dene kaydı aynı yükle yeniden gönderir, başarılıysa kuyruktan çıkar', () async {
+    when(() => dio.post<Map<String, dynamic>>(any(), data: any(named: 'data'))).thenThrow(
+      httpError('/kayit', 404, message: 'Egzersiz bulunamadı veya yetkiniz yok.'),
+    );
+
+    final box = await Hive.openBox<String>(SyncManager.boxName);
+    int? user = 1;
+    final manager = SyncManager(
+      networkInfo: networkInfo,
+      dioClient: dioClient,
+      syncBox: box,
+      currentUserId: () => user,
+    );
+
+    await manager.addToQueue('/kayit', {'localId': 'L1'});
+    await manager.syncPendingData();
+
+    when(() => dio.post<Map<String, dynamic>>(any(), data: any(named: 'data'))).thenAnswer(
+      (inv) async => Response<Map<String, dynamic>>(
+        requestOptions: RequestOptions(path: inv.positionalArguments.first as String),
+        statusCode: 200,
+      ),
+    );
+
+    final key = box.keys.single as String;
+    await manager.retry(key);
+
+    verify(() => dio.post<Map<String, dynamic>>('/kayit', data: {'localId': 'L1'})).called(2);
+    expect(box.isEmpty, isTrue);
+    expect(manager.rejectedCount.value, equals(0));
+  });
+
+  test('sil yalnızca seçilen kaydı kaldırır', () async {
+    final box = await Hive.openBox<String>(SyncManager.boxName);
+    int? user = 1;
+    final manager = SyncManager(
+      networkInfo: networkInfo,
+      dioClient: dioClient,
+      syncBox: box,
+      currentUserId: () => user,
+    );
+
+    await box.put('a', jsonEncode({
+      'id': 'a',
+      'endpoint': '/a',
+      'payload': <String, dynamic>{},
+      'timestamp': '2026-01-01T00:00:00Z',
+      'ownerId': 1,
+      'status': 'rejected',
+      'reason': 'x',
+    }));
+    await box.put('b', jsonEncode({
+      'id': 'b',
+      'endpoint': '/b',
+      'payload': <String, dynamic>{},
+      'timestamp': '2026-01-01T00:00:00Z',
+      'ownerId': 1,
+    }));
+
+    await manager.discard('a');
+    expect(box.keys.toList(), equals(['b']));
+    expect(manager.rejectedCount.value, equals(0));
+  });
+
+  test('reddedilenler yalnızca oturumdaki kullanıcı için listelenir', () async {
+    final box = await Hive.openBox<String>(SyncManager.boxName);
+    int? user = 1;
+    final manager = SyncManager(
+      networkInfo: networkInfo,
+      dioClient: dioClient,
+      syncBox: box,
+      currentUserId: () => user,
+    );
+
+    await box.put('r1', jsonEncode({
+      'id': 'r1',
+      'endpoint': '/r1',
+      'payload': <String, dynamic>{},
+      'timestamp': '2026-01-01T00:00:00Z',
+      'ownerId': 1,
+      'status': 'rejected',
+      'reason': 'x',
+    }));
+    await box.put('r2', jsonEncode({
+      'id': 'r2',
+      'endpoint': '/r2',
+      'payload': <String, dynamic>{},
+      'timestamp': '2026-01-01T00:00:00Z',
+      'ownerId': 2,
+      'status': 'rejected',
+      'reason': 'y',
+    }));
+
+    expect(manager.rejectedRecords().map((r) => r.key).toList(), equals(['r1']));
+    manager.refreshRejectedCount();
+    expect(manager.rejectedCount.value, equals(1));
+  });
 }

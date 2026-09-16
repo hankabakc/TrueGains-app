@@ -6,6 +6,8 @@ import 'package:gymapp_v2/core/theme/app_colors.dart';
 import 'package:gymapp_v2/core/theme/app_dimens.dart';
 import 'package:gymapp_v2/core/widgets/glass_container.dart';
 import 'package:gymapp_v2/core/widgets/offline_banner.dart';
+import 'package:gymapp_v2/core/widgets/sync_on_resume.dart';
+import 'package:gymapp_v2/core/widgets/unsynced_banner.dart';
 import 'package:gymapp_v2/features/dashboard/presentation/bloc/navigation/navigation_cubit.dart';
 import 'package:gymapp_v2/features/dashboard/presentation/pages/coach_dashboard_page.dart';
 import 'package:gymapp_v2/features/dashboard/presentation/pages/client_dashboard_page.dart';
@@ -146,11 +148,14 @@ class _MainWrapperViewState extends State<MainWrapperView> {
           },
           child: Scaffold(
             backgroundColor: AppColors.background,
-            body: Column(
-              children: [
-                const OfflineBanner(),
-                Expanded(child: TabFadeStack(index: selectedIndex, children: _pages)),
-              ],
+            body: SyncOnResume(
+              child: Column(
+                children: [
+                  const OfflineBanner(),
+                  const UnsyncedBanner(),
+                  Expanded(child: TabFadeStack(index: selectedIndex, children: _pages)),
+                ],
+              ),
             ),
             bottomNavigationBar: _buildModernNavBar(context, selectedIndex),
           ),

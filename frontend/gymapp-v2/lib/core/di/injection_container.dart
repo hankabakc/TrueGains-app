@@ -58,6 +58,7 @@ import '../../features/training/presentation/bloc/create_program/create_personal
 import '../../features/training/presentation/bloc/workout_history/workout_history_cubit.dart';
 import '../../features/training/presentation/bloc/exercise_library/exercise_library_cubit.dart';
 import '../../features/training/presentation/bloc/assigned_programs/assigned_programs_cubit.dart';
+import '../../features/sync/presentation/unsynced_records_cubit.dart';
 import '../../features/nutrition/presentation/bloc/diet_dashboard/diet_dashboard_cubit.dart';
 import '../../features/nutrition/presentation/bloc/diet_goals/diet_goals_cubit.dart';
 import '../../features/nutrition/presentation/bloc/diet_program_selection/diet_program_selection_cubit.dart';
@@ -219,6 +220,7 @@ Future<void> initDependencies() async {
   sl.registerFactory(() => LoginFormCubit());
   sl.registerFactory(() => ForgotPasswordCubit(sl<AuthRepository>()));
   sl.registerFactory(() => FinanceBloc(repository: sl<FinanceRepository>()));
+  sl.registerFactory(() => UnsyncedRecordsCubit(sl<SyncManager>()));
   sl.registerFactory(() => WeeklyProgressCubit(sl<TrainingRepository>()));
   sl.registerFactory(() => ExerciseAnalyticsCubit(sl<TrainingRepository>()));
   sl.registerFactory(() => DashboardCubit());

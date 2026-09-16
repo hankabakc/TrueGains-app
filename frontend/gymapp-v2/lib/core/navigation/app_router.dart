@@ -38,6 +38,8 @@ import 'package:gymapp_v2/features/training/models/completed_set_data.dart';
 import 'package:gymapp_v2/features/measurement/ui/pages/measurements_page.dart';
 import 'package:gymapp_v2/features/measurement/ui/pages/progress_charts_page.dart';
 import 'package:gymapp_v2/features/measurement/ui/pages/shared_measurements_page.dart';
+import 'package:gymapp_v2/features/sync/presentation/unsynced_records_cubit.dart';
+import 'package:gymapp_v2/features/sync/presentation/unsynced_records_page.dart';
 import 'package:gymapp_v2/features/measurement/models/client_measurements_summary.dart';
 import 'package:gymapp_v2/features/nutrition/presentation/pages/diet_dashboard_page.dart';
 import 'package:gymapp_v2/features/nutrition/presentation/pages/diet_entry_page.dart';
@@ -513,6 +515,14 @@ final GoRouter appRouter = GoRouter(
           child: MeasurementsPage(targetClientId: clientId),
         );
       },
+    ),
+    GoRoute(
+      path: '/unsynced-records',
+      name: 'unsynced-records',
+      builder: (context, state) => BlocProvider<UnsyncedRecordsCubit>(
+        create: (context) => sl<UnsyncedRecordsCubit>()..load(),
+        child: const UnsyncedRecordsPage(),
+      ),
     ),
     GoRoute(
       path: '/progress-charts',
