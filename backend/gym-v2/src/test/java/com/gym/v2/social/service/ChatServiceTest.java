@@ -39,6 +39,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 /**
@@ -194,7 +195,7 @@ class ChatServiceTest {
 		currentUserIs(outsider);
 		when(conversationRepository.findByIdWithUsers(10L)).thenReturn(Optional.of(conversation()));
 
-		assertThatThrownBy(() -> service.sendMessage(new SendMessageRequest(10L, "merhaba", null, null)))
+		assertThatThrownBy(() -> service.sendMessage(new SendMessageRequest(10L, "merhaba", null, null, null)))
 			.isInstanceOf(BadRequestException.class);
 
 		verify(messageRepository, never()).save(any());
@@ -205,7 +206,7 @@ class ChatServiceTest {
 		currentUserIs(client);
 		when(conversationRepository.findByIdWithUsers(404L)).thenReturn(Optional.empty());
 
-		assertThatThrownBy(() -> service.sendMessage(new SendMessageRequest(404L, "merhaba", null, null)))
+		assertThatThrownBy(() -> service.sendMessage(new SendMessageRequest(404L, "merhaba", null, null, null)))
 			.isInstanceOf(NotFoundException.class);
 	}
 
@@ -228,7 +229,7 @@ class ChatServiceTest {
 		when(conversationRepository.findByIdWithUsers(10L)).thenReturn(Optional.of(conversation()));
 		when(userBlockRepository.existsBlockBetween(any(), any())).thenReturn(true);
 
-		service.sendMessage(new SendMessageRequest(10L, null, "https://saldirgan.com/api/v1/files/x.jpg", null));
+		service.sendMessage(new SendMessageRequest(10L, null, "https://saldirgan.com/api/v1/files/x.jpg", null, null));
 
 		ArgumentCaptor<Message> captor = ArgumentCaptor.forClass(Message.class);
 		verify(messageRepository).save(captor.capture());
@@ -241,7 +242,7 @@ class ChatServiceTest {
 		when(conversationRepository.findByIdWithUsers(10L)).thenReturn(Optional.of(conversation()));
 		when(userBlockRepository.existsBlockBetween(any(), any())).thenReturn(true);
 
-		service.sendMessage(new SendMessageRequest(10L, null, "http://10.0.2.2:8082/api/v1/files/y.png", null));
+		service.sendMessage(new SendMessageRequest(10L, null, "http://10.0.2.2:8082/api/v1/files/y.png", null, null));
 
 		ArgumentCaptor<Message> captor = ArgumentCaptor.forClass(Message.class);
 		verify(messageRepository).save(captor.capture());
@@ -256,10 +257,49 @@ class ChatServiceTest {
 		when(conversationRepository.findByIdWithUsers(10L)).thenReturn(Optional.of(conversation()));
 		lenient().when(userBlockRepository.existsBlockBetween(any(), any())).thenReturn(false);
 
-		assertThatThrownBy(() -> service.sendMessage(new SendMessageRequest(10L, "   ", null, null)))
+		assertThatThrownBy(() -> service.sendMessage(new SendMessageRequest(10L, "   ", null, null, null)))
 			.isInstanceOf(BadRequestException.class);
 
 		verify(messageRepository, never()).save(any());
+	}
+
+	@Test
+	void sendMessage_sameLocalIdAlreadySaved_returnsExistingAndNeitherSavesNorNotifies() {
+		currentUserIs(client);
+		when(conversationRepository.findByIdWithUsers(10L)).thenReturn(Optional.of(conversation()));
+		Message existing = new Message();
+		when(messageRepository.findBySenderIdAndLocalId(1L, "yerel-1")).thenReturn(Optional.of(existing));
+
+		service.sendMessage(new SendMessageRequest(10L, "merhaba", null, null, "yerel-1"));
+
+		verify(socialMapper).toMessageDTO(existing);
+		verify(messageRepository, never()).save(any());
+		verifyNoInteractions(messagingTemplate, notificationService);
+	}
+
+	@Test
+	void sendMessage_outsider_isRejectedBeforeLocalIdLookup() {
+		currentUserIs(outsider);
+		when(conversationRepository.findByIdWithUsers(10L)).thenReturn(Optional.of(conversation()));
+
+		assertThatThrownBy(() -> service.sendMessage(new SendMessageRequest(10L, "merhaba", null, null, "yerel-1")))
+			.isInstanceOf(BadRequestException.class);
+
+		verify(messageRepository, never()).findBySenderIdAndLocalId(any(), any());
+	}
+
+	@Test
+	void sendMessage_newLocalId_isStoredOnTheMessage() {
+		currentUserIs(client);
+		when(conversationRepository.findByIdWithUsers(10L)).thenReturn(Optional.of(conversation()));
+		when(messageRepository.findBySenderIdAndLocalId(1L, "yerel-2")).thenReturn(Optional.empty());
+		when(userBlockRepository.existsBlockBetween(any(), any())).thenReturn(true);
+
+		service.sendMessage(new SendMessageRequest(10L, "merhaba", null, null, "yerel-2"));
+
+		ArgumentCaptor<Message> captor = ArgumentCaptor.forClass(Message.class);
+		verify(messageRepository).save(captor.capture());
+		assertThat(captor.getValue().getLocalId()).isEqualTo("yerel-2");
 	}
 
 }

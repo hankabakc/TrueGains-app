@@ -172,17 +172,17 @@ class AssignmentAndChatQueryCountIT extends IntegrationTestBase {
 		Long conversationId = conversation.id();
 
 		long withEmptyHistory = entityLoadCountFor(coach.getEmail(),
-				() -> chatService.sendMessage(new SendMessageRequest(conversationId, "ilk", null, null)));
+				() -> chatService.sendMessage(new SendMessageRequest(conversationId, "ilk", null, null, null)));
 
 		// Sporcunun okumadığı 10 mesaj biriksin.
 		SecurityContextHolder.getContext()
 			.setAuthentication(new UsernamePasswordAuthenticationToken(coach.getEmail(), null, List.of()));
 		for (int i = 0; i < 10; i++) {
-			chatService.sendMessage(new SendMessageRequest(conversationId, "dolgu " + i, null, null));
+			chatService.sendMessage(new SendMessageRequest(conversationId, "dolgu " + i, null, null, null));
 		}
 
 		long withUnreadHistory = entityLoadCountFor(coach.getEmail(),
-				() -> chatService.sendMessage(new SendMessageRequest(conversationId, "son", null, null)));
+				() -> chatService.sendMessage(new SendMessageRequest(conversationId, "son", null, null, null)));
 
 		assertThat(withUnreadHistory)
 			.as("okunmamış mesaj biriktikçe gönderim daha çok satır yüklüyor (%d → %d): "

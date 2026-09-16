@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:stomp_dart_client/stomp_dart_client.dart';
+import 'package:uuid/uuid.dart';
 import 'package:gymapp_v2/core/constants/storage_keys.dart';
 import 'package:gymapp_v2/core/constants/network_constants.dart';
 import 'package:gymapp_v2/core/network/network_info.dart';
@@ -56,8 +57,11 @@ class ChatRepository {
     int? packageId, {
     int? senderId,
   }) async {
+    // Tekrar koruması (G-79): çevrimiçi ve kuyruk yolu aynı kimliği taşır.
+    final String localId = const Uuid().v4();
+
     if (await _networkInfo.isConnected) {
-      return _apiService.sendMessage(conversationId, content, attachmentUrl, packageId);
+      return _apiService.sendMessage(conversationId, content, attachmentUrl, packageId, localId: localId);
     }
 
     // Kullanıcı gönder'e bastığında giriş kutusu anında temizleniyor; kuyruğa
@@ -67,6 +71,7 @@ class ChatRepository {
       'content': content,
       'attachmentUrl': attachmentUrl,
       if (packageId != null) 'packageId': packageId,
+      'localId': localId,
     });
 
     if (senderId == null) {

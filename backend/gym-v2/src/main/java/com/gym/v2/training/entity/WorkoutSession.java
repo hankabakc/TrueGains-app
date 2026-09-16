@@ -10,7 +10,8 @@ import java.util.List;
  * GYMAPP-V2 İdman Oturumu: Birden fazla egzersiz logunu tek bir oturum altında toplar.
  */
 @Entity
-@Table(name = "workout_sessions")
+@Table(name = "workout_sessions", uniqueConstraints = @UniqueConstraint(name = "uq_workout_sessions_user_local",
+		columnNames = { "user_id", "local_id" }))
 public class WorkoutSession {
 
 	@Id
@@ -35,6 +36,13 @@ public class WorkoutSession {
 
 	@Column(name = "workout_day_id")
 	private Long workoutDayId;
+
+	/**
+	 * Cihazın ürettiği kimlik; aynı kullanıcıdan aynı kimlikle ikinci oturum açılmaz
+	 * (G-79).
+	 */
+	@Column(name = "local_id", length = 36)
+	private String localId;
 
 	@Column(nullable = false, updatable = false, columnDefinition = "TIMESTAMPTZ")
 	private Instant createdAt;
@@ -121,6 +129,14 @@ public class WorkoutSession {
 
 	public void setWorkoutDayId(Long workoutDayId) {
 		this.workoutDayId = workoutDayId;
+	}
+
+	public String getLocalId() {
+		return localId;
+	}
+
+	public void setLocalId(String localId) {
+		this.localId = localId;
 	}
 
 }

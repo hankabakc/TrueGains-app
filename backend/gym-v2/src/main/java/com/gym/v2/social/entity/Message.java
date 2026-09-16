@@ -9,7 +9,8 @@ import java.time.Instant;
  * Sohbet mesajı. Bulgu #2: Zaman yönetimi ve TIMESTAMPTZ geçişi yapıldı.
  */
 @Entity
-@Table(name = "message")
+@Table(name = "message", uniqueConstraints = @UniqueConstraint(name = "uq_message_sender_local",
+		columnNames = { "sender_id", "local_id" }))
 public class Message {
 
 	@Id
@@ -40,6 +41,13 @@ public class Message {
 
 	@Column(name = "is_blocked_delivery", nullable = false)
 	private boolean blockedDelivery = false;
+
+	/**
+	 * Cihazın ürettiği kimlik; aynı gönderenden aynı kimlikle ikinci mesaj açılmaz
+	 * (G-79).
+	 */
+	@Column(name = "local_id", length = 36)
+	private String localId;
 
 	public Message() {
 	}
@@ -110,6 +118,14 @@ public class Message {
 
 	public void setBlockedDelivery(boolean blockedDelivery) {
 		this.blockedDelivery = blockedDelivery;
+	}
+
+	public String getLocalId() {
+		return localId;
+	}
+
+	public void setLocalId(String localId) {
+		this.localId = localId;
 	}
 
 	@Column(name = "package_id")

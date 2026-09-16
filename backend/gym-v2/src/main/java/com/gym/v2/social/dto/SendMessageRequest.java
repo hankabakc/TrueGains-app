@@ -18,5 +18,9 @@ public record SendMessageRequest(@NotNull(message = "Konuşma ID zorunludur.") L
 		// Kalıbın işi, yolun bizim dosya ucumuz olduğunu garanti etmek.
 		@Size(max = 1024, message = "{validation.url.size}") @Pattern(regexp = FileUrls.PATTERN,
 				message = "{validation.url.pattern}") String attachmentUrl,
-		Long packageId) {
+		Long packageId,
+
+		// Cihazın ürettiği kimlik; aynı gönderenden aynı kimlikle ikinci mesaj açılmaz
+		// (G-79).
+		@Size(max = 36, message = "Yerel kimlik en fazla 36 karakter olabilir.") String localId) {
 }

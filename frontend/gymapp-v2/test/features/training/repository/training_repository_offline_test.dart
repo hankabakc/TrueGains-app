@@ -90,4 +90,39 @@ void main() {
 
     verify(() => dio.post<Map<String, dynamic>>('/training/sessions', data: {'a': 1})).called(1);
   });
+
+  test('çevrimdışı antrenman yerel kimlik taşır', () async {
+    final uuidPattern = RegExp(r'^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$');
+    when(() => networkInfo.isConnected).thenAnswer((_) async => false);
+
+    await repository.logWorkoutSession(
+      dayName: 'Gün 1',
+      totalSeconds: 60,
+      sets: const <CompletedSetData>[],
+    );
+
+    final payload = verify(() => syncManager.addToQueue(any(), captureAny())).captured.single as Map<String, dynamic>;
+    expect(payload['localId'], matches(uuidPattern));
+  });
+
+  test('çevrimiçi antrenman yerel kimlik taşır', () async {
+    final uuidPattern = RegExp(r'^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$');
+    when(() => networkInfo.isConnected).thenAnswer((_) async => true);
+    when(() => api.logWorkoutSession(any())).thenAnswer(
+      (_) async => ApiResponse<void>(
+        success: true,
+        message: '',
+        timestamp: '2026-01-01T00:00:00Z',
+      ),
+    );
+
+    await repository.logWorkoutSession(
+      dayName: 'Gün 1',
+      totalSeconds: 60,
+      sets: const <CompletedSetData>[],
+    );
+
+    final payload = verify(() => api.logWorkoutSession(captureAny())).captured.single as Map<String, dynamic>;
+    expect(payload['localId'], matches(uuidPattern));
+  });
 }

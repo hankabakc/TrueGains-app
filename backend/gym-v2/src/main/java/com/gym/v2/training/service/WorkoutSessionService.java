@@ -25,6 +25,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Clock;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -83,9 +84,20 @@ public class WorkoutSessionService {
 	@Transactional
 	public WorkoutSessionDTO logWorkoutSession(WorkoutSessionRequestDTO request) {
 		AppUser currentUser = getCurrentUser();
+		// Tekrar koruması (G-79): cevabı yolda kaybolup yeniden gönderilen istek ikinci
+		// oturum
+		// açmaz, ilk kaydın cevabını alır. Haftalık ilerleme de ikinci kez güncellenmez.
+		if (request.localId() != null) {
+			Optional<WorkoutSession> existing = workoutSessionRepository
+				.findByUserIdAndLocalIdWithLogs(currentUser.getId(), request.localId());
+			if (existing.isPresent()) {
+				return trainingMapper.toWorkoutSessionDTO(existing.get());
+			}
+		}
 		WorkoutSession session = new WorkoutSession(currentUser, request.workoutDayName(), request.totalSeconds());
 		session.setTrainingBlockId(request.trainingBlockId());
 		session.setWorkoutDayId(request.workoutDayId());
+		session.setLocalId(request.localId());
 		session.onPersist(clock.instant());
 
 		if (request.logs() != null && !request.logs().isEmpty()) {

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -202,5 +203,35 @@ void main() {
     expect(m1['endpoint'], equals('/social/chat/send'));
     expect((m1['payload'] as Map<String, dynamic>)['content'], equals('selam'));
     expect(await Hive.boxExists(SyncManager.legacyBoxName), isFalse);
+  });
+
+  test('aynı anda iki gönderim çağrısı kaydı bir kez gönderir', () async {
+    final gate = Completer<void>();
+    when(() => networkInfo.isConnected).thenAnswer((_) async => true);
+    when(() => dio.post<Map<String, dynamic>>(any(), data: any(named: 'data')))
+        .thenAnswer((inv) async {
+      await gate.future;
+      return Response<Map<String, dynamic>>(
+        requestOptions: RequestOptions(path: inv.positionalArguments.first as String),
+        statusCode: 200,
+      );
+    });
+
+    final box = await Hive.openBox<String>(SyncManager.boxName);
+    final manager = SyncManager(
+      networkInfo: networkInfo,
+      dioClient: dioClient,
+      syncBox: box,
+      currentUserId: () => 1,
+    );
+
+    await manager.addToQueue('/kayit', {});
+    final first = manager.syncPendingData();
+    final second = manager.syncPendingData();
+    gate.complete();
+    await Future.wait([first, second]);
+
+    verify(() => dio.post<Map<String, dynamic>>('/kayit', data: any(named: 'data'))).called(1);
+    expect(box.isEmpty, isTrue);
   });
 }

@@ -28,6 +28,9 @@ public interface MessageRepository extends JpaRepository<Message, Long> {
 
 	Optional<Message> findFirstByConversationIdOrderBySentAtDesc(Long conversationId);
 
+	/** Tekrar koruması (G-79): aynı gönderenin aynı yerel kimlikle kaydettiği mesaj. */
+	Optional<Message> findBySenderIdAndLocalId(Long senderId, String localId);
+
 	@Query("SELECT m.conversation.id, COUNT(m) FROM Message m WHERE "
 			+ "m.conversation.id IN :conversationIds AND m.sender.id <> :viewerId "
 			+ "AND m.status = com.gym.v2.social.entity.MessageStatus.SENT "

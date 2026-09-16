@@ -26,6 +26,9 @@ class SyncManager {
   /// O an oturum açmış kullanıcının kimliği; oturum yoksa null.
   final int? Function() currentUserId;
 
+  /// Gönderim sürerken gelen ikinci çağrı beklemez, hemen döner; aynı kayıt iki kez gitmez.
+  bool _isSyncing = false;
+
   SyncManager({
     required this.networkInfo,
     required this.dioClient,
@@ -57,39 +60,46 @@ class SyncManager {
 
   /// Kuyrukta bekleyen, oturumdaki kullanıcıya ait kayıtları gönderir.
   Future<void> syncPendingData() async {
-    if (syncBox.isEmpty) return;
+    // ponytail: süren gönderim sırasında eklenen kayıt bir sonraki tetiklemede gider.
+    if (_isSyncing) return;
+    _isSyncing = true;
+    try {
+      if (syncBox.isEmpty) return;
 
-    final int? owner = currentUserId();
-    if (owner == null) return;
+      final int? owner = currentUserId();
+      if (owner == null) return;
 
-    final bool isConnected = await networkInfo.isConnected;
-    if (!isConnected) return;
+      final bool isConnected = await networkInfo.isConnected;
+      if (!isConnected) return;
 
-    final List<String> keys = syncBox.keys.cast<String>().toList();
+      final List<String> keys = syncBox.keys.cast<String>().toList();
 
-    for (final key in keys) {
-      final String? rawData = syncBox.get(key);
-      if (rawData == null) continue;
+      for (final key in keys) {
+        final String? rawData = syncBox.get(key);
+        if (rawData == null) continue;
 
-      try {
-        final Map<String, dynamic> item = jsonDecode(rawData) as Map<String, dynamic>;
+        try {
+          final Map<String, dynamic> item = jsonDecode(rawData) as Map<String, dynamic>;
 
-        // ponytail: sahibi olmayan kayıt yalnızca G-68 öncesi kurulumdan taşınmış olabilir
-        // (üretimde kurulum yok); oturumdaki kullanıcıyla gönderilir.
-        final Object? itemOwner = item['ownerId'];
-        if (itemOwner != null && itemOwner != owner) continue;
+          // ponytail: sahibi olmayan kayıt yalnızca G-68 öncesi kurulumdan taşınmış olabilir
+          // (üretimde kurulum yok); oturumdaki kullanıcıyla gönderilir.
+          final Object? itemOwner = item['ownerId'];
+          if (itemOwner != null && itemOwner != owner) continue;
 
-        final String endpoint = item['endpoint'] as String;
-        final Map<String, dynamic> payload = item['payload'] as Map<String, dynamic>;
+          final String endpoint = item['endpoint'] as String;
+          final Map<String, dynamic> payload = item['payload'] as Map<String, dynamic>;
 
-        final response = await dioClient.dio.post<Map<String, dynamic>>(endpoint, data: payload);
+          final response = await dioClient.dio.post<Map<String, dynamic>>(endpoint, data: payload);
 
-        if (response.statusCode == 200 || response.statusCode == 201) {
-          await syncBox.delete(key);
+          if (response.statusCode == 200 || response.statusCode == 201) {
+            await syncBox.delete(key);
+          }
+        } catch (e) {
+          // Hata durumunda kayıt kuyrukta kalır (reddedilen kaydın gösterimi: G-69).
         }
-      } catch (e) {
-        // Hata durumunda kayıt kuyrukta kalır (reddedilen kaydın gösterimi: G-69).
       }
+    } finally {
+      _isSyncing = false;
     }
   }
 }

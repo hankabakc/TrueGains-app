@@ -74,7 +74,7 @@ class PrivacyAndDeliveryIT extends IntegrationTestBase {
 		actingAs(client);
 		chatService.blockUser(coach.getId());
 		actingAs(coach);
-		chatService.sendMessage(new SendMessageRequest(conversation.id(), "GIZLI ENGELLENEN METIN", null, null));
+		chatService.sendMessage(new SendMessageRequest(conversation.id(), "GIZLI ENGELLENEN METIN", null, null, null));
 		entityManager.flush();
 		entityManager.clear();
 

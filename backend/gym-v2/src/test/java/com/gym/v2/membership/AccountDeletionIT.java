@@ -141,9 +141,9 @@ class AccountDeletionIT extends IntegrationTestBase {
 
 		actingAs(client);
 		ConversationDTO conversation = chatService.initiateConversation(coach.getId());
-		chatService.sendMessage(new SendMessageRequest(conversation.id(), "sporcunun mesaji", null, null));
+		chatService.sendMessage(new SendMessageRequest(conversation.id(), "sporcunun mesaji", null, null, null));
 		actingAs(coach);
-		chatService.sendMessage(new SendMessageRequest(conversation.id(), "kocun mesaji", null, null));
+		chatService.sendMessage(new SendMessageRequest(conversation.id(), "kocun mesaji", null, null, null));
 		entityManager.flush();
 		Long conversationId = conversation.id();
 

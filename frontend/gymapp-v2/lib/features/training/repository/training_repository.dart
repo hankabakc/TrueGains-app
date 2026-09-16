@@ -11,6 +11,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:stomp_dart_client/stomp_dart_client.dart';
 import 'package:gymapp_v2/core/constants/storage_keys.dart';
 import 'package:gymapp_v2/core/constants/network_constants.dart';
+import 'package:uuid/uuid.dart';
 import '../data/services/training_api_service.dart';
 
 class TrainingRepository {
@@ -70,6 +71,8 @@ class TrainingRepository {
     int? workoutDayId,
   }) async {
     final payload = {
+      // Tekrar koruması (G-79): aynı kimlikle ikinci gönderim sunucuda yeni kayıt açmaz.
+      'localId': const Uuid().v4(),
       'workoutDayName': dayName,
       'totalSeconds': totalSeconds,
       'trainingBlockId': trainingBlockId,

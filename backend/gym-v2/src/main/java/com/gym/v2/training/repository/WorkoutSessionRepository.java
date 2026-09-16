@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface WorkoutSessionRepository extends JpaRepository<WorkoutSession, Long> {
@@ -28,5 +29,15 @@ public interface WorkoutSessionRepository extends JpaRepository<WorkoutSession, 
 	// getirir
 	java.util.List<WorkoutSession> findByUserIdAndTrainingBlockIdAndCreatedAtBetween(Long userId, Long trainingBlockId,
 			java.time.Instant start, java.time.Instant end);
+
+	/**
+	 * Tekrar koruması (G-79): aynı kullanıcının aynı yerel kimlikle kaydettiği oturum.
+	 * Loglar tek sorguda gelir; DTO'ya haritalanırken tembel yükleme olmaz.
+	 */
+	@Query("SELECT DISTINCT s FROM WorkoutSession s " + "LEFT JOIN FETCH s.logs l "
+			+ "LEFT JOIN FETCH l.workoutExercise we " + "LEFT JOIN FETCH we.exercise "
+			+ "LEFT JOIN FETCH l.performedExercise " + "WHERE s.user.id = :userId AND s.localId = :localId")
+	Optional<WorkoutSession> findByUserIdAndLocalIdWithLogs(@Param("userId") Long userId,
+			@Param("localId") String localId);
 
 }

@@ -85,8 +85,9 @@ class ChatApiService with ApiErrorHandler {
     int conversationId,
     String? content,
     String? attachmentUrl,
-    int? packageId,
-  ) async {
+    int? packageId, {
+    String? localId,
+  }) async {
     try {
       final response = await _dioClient.dio.post<Map<String, dynamic>>(
         '/social/chat/send',
@@ -95,6 +96,7 @@ class ChatApiService with ApiErrorHandler {
           'content': content,
           'attachmentUrl': attachmentUrl,
           if (packageId != null) 'packageId': packageId,
+          if (localId != null) 'localId': localId,
         },
       );
       return ApiResponse<MessageModel>.fromJson(

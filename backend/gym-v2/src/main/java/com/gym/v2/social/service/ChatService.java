@@ -38,6 +38,7 @@ import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 /**
@@ -166,6 +167,18 @@ public class ChatService {
 			throw new BadRequestException("Bu konuşmaya erişim yetkiniz yok.");
 		}
 
+		// Tekrar koruması (G-79): erişim kontrolünden SONRA, konuşmanın tarafı olmayan
+		// biri kimlik
+		// deneyerek kayıt yoklayamasın. Tekrar gelen istek yeni satır, yayın ve bildirim
+		// üretmez.
+		if (request.localId() != null) {
+			Optional<Message> existing = messageRepository.findBySenderIdAndLocalId(currentUser.getId(),
+					request.localId());
+			if (existing.isPresent()) {
+				return socialMapper.toMessageDTO(existing.get());
+			}
+		}
+
 		Long otherUserId = conversation.getClient().getId().equals(currentUser.getId())
 				? conversation.getCoach().getId() : conversation.getClient().getId();
 		boolean blockedDelivery = userBlockRepository.existsBlockBetween(currentUser.getId(), otherUserId);
@@ -187,6 +200,7 @@ public class ChatService {
 		message.setAttachmentUrl(FileUrls.toStoredPath(request.attachmentUrl()));
 		message.setStatus(MessageStatus.SENT);
 		message.setBlockedDelivery(blockedDelivery);
+		message.setLocalId(request.localId());
 
 		if (hasPackage) {
 			SubscriptionPackage pkg = subscriptionPackageRepository.findById(request.packageId())

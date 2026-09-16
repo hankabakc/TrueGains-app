@@ -182,7 +182,7 @@ class WorkoutSessionOwnershipTest {
 			.thenReturn(List.of(exerciseWithId(1000L), exerciseWithId(2000L)));
 
 		WorkoutSessionRequestDTO request = new WorkoutSessionRequestDTO("Gun 1", 3600,
-				List.of(logFor(1000L, 1), logFor(2000L, 2)), null, null);
+				List.of(logFor(1000L, 1), logFor(2000L, 2)), null, null, null);
 
 		assertThatThrownBy(() -> service.logWorkoutSession(request)).isInstanceOf(NotFoundException.class);
 
@@ -201,7 +201,7 @@ class WorkoutSessionOwnershipTest {
 		when(workoutSessionRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
 		WorkoutSessionRequestDTO request = new WorkoutSessionRequestDTO("Gun 1", 3600,
-				List.of(logFor(1000L, 1), logFor(1000L, 2), logFor(1001L, 1)), null, null);
+				List.of(logFor(1000L, 1), logFor(1000L, 2), logFor(1001L, 1)), null, null, null);
 
 		service.logWorkoutSession(request);
 
@@ -216,7 +216,7 @@ class WorkoutSessionOwnershipTest {
 		currentUserIs(owner);
 		when(workoutSessionRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
-		WorkoutSessionRequestDTO request = new WorkoutSessionRequestDTO("Gun 1", 3600, List.of(), 5L, null);
+		WorkoutSessionRequestDTO request = new WorkoutSessionRequestDTO("Gun 1", 3600, List.of(), 5L, null, null);
 
 		service.logWorkoutSession(request);
 
@@ -229,7 +229,7 @@ class WorkoutSessionOwnershipTest {
 		currentUserIs(owner);
 		when(workoutSessionRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
-		service.logWorkoutSession(new WorkoutSessionRequestDTO("Gun 1", 3600, List.of(), null, null));
+		service.logWorkoutSession(new WorkoutSessionRequestDTO("Gun 1", 3600, List.of(), null, null, null));
 
 		verify(weeklyProgressService, never()).upsertWeeklyProgress(any(), any(), any());
 	}
@@ -267,6 +267,43 @@ class WorkoutSessionOwnershipTest {
 		assertThatThrownBy(() -> service.deleteWorkoutSession(404L)).isInstanceOf(NotFoundException.class);
 
 		verify(workoutSessionRepository, never()).delete(any());
+	}
+
+	@Test
+	void logWorkoutSession_sameLocalIdAlreadySaved_returnsExistingAndSavesNothing() {
+		currentUserIs(owner);
+		WorkoutSession existing = session();
+		when(workoutSessionRepository.findByUserIdAndLocalIdWithLogs(1L, "yerel-1")).thenReturn(Optional.of(existing));
+
+		service.logWorkoutSession(new WorkoutSessionRequestDTO("Gun 1", 3600, List.of(), 5L, null, "yerel-1"));
+
+		verify(trainingMapper).toWorkoutSessionDTO(existing);
+		verify(workoutSessionRepository, never()).save(any());
+		verify(weeklyProgressService, never()).upsertWeeklyProgress(any(), any(), any());
+	}
+
+	@Test
+	void logWorkoutSession_newLocalId_isStoredOnTheSession() {
+		currentUserIs(owner);
+		when(workoutSessionRepository.findByUserIdAndLocalIdWithLogs(1L, "yerel-2")).thenReturn(Optional.empty());
+		when(workoutSessionRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+		service.logWorkoutSession(new WorkoutSessionRequestDTO("Gun 1", 3600, List.of(), null, null, "yerel-2"));
+
+		ArgumentCaptor<WorkoutSession> captor = ArgumentCaptor.forClass(WorkoutSession.class);
+		verify(workoutSessionRepository).save(captor.capture());
+		assertThat(captor.getValue().getLocalId()).isEqualTo("yerel-2");
+	}
+
+	@Test
+	void logWorkoutSession_withoutLocalId_doesNotLookUpExisting() {
+		currentUserIs(owner);
+		when(workoutSessionRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+		service.logWorkoutSession(new WorkoutSessionRequestDTO("Gun 1", 3600, List.of(), null, null, null));
+
+		verify(workoutSessionRepository, never()).findByUserIdAndLocalIdWithLogs(any(), any());
+		verify(workoutSessionRepository).save(any());
 	}
 
 }

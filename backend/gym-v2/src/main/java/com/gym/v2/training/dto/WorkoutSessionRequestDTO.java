@@ -1,5 +1,7 @@
 package com.gym.v2.training.dto;
 
+import jakarta.validation.constraints.Size;
+
 import java.util.List;
 
 /**
@@ -7,5 +9,6 @@ import java.util.List;
  * göndermek için kullanılır. "Pure Java" politikası gereği record olarak tanımlanmıştır.
  */
 public record WorkoutSessionRequestDTO(String workoutDayName, Integer totalSeconds, List<WorkoutLogRequestDTO> logs,
-		Long trainingBlockId, Long workoutDayId) {
+		Long trainingBlockId, Long workoutDayId,
+		@Size(max = 36, message = "Yerel kimlik en fazla 36 karakter olabilir.") String localId) {
 }
