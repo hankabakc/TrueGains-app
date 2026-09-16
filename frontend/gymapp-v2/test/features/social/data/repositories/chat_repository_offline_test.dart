@@ -153,4 +153,22 @@ void main() {
         .single as Map<String, dynamic>)['localId'];
     expect(captured, equals('yerel-1'));
   });
+
+  test('kuyruğa alınan geçici balon kuyruk kaydıyla aynı yerel kimliği taşır', () async {
+    when(() => networkInfo.isConnected).thenAnswer((_) async => false);
+
+    final result = await repository.sendMessage(10, 'selam', null, null, senderId: 5);
+
+    final payload = verify(() => syncManager.addToQueue(any(), captureAny())).captured.single as Map<String, dynamic>;
+
+    expect(result.data!.id, isNegative);
+    expect(result.data!.localId, isNotNull);
+    expect(result.data!.localId, equals(payload['localId']));
+  });
+
+  test('geçici balon durum güncellemesinde yerel kimliğini kaybetmez', () {
+    final MessageModel pending = sentMessage().copyWith(id: -1, localId: 'L1');
+    expect(pending.copyWith(status: MessageStatus.read).localId, equals('L1'));
+  });
 }
+

@@ -96,6 +96,7 @@ class ChatRepository {
       attachmentUrl: attachmentUrl,
       sentAt: DateTime.now(),
       packageId: packageId,
+      localId: localId,
     );
 
     return ApiResponse<MessageModel>(

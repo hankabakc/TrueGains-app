@@ -441,4 +441,33 @@ void main() {
     manager.refreshRejectedCount();
     expect(manager.rejectedCount.value, equals(1));
   });
+
+  test('reddedilen kayıt yükteki yerel kimliği taşır', () async {
+    when(() => dio.post<Map<String, dynamic>>(
+          '/social/chat/send',
+          data: any(named: 'data'),
+        )).thenThrow(httpError(
+      '/social/chat/send',
+      400,
+      message: 'Mesaj en fazla 2000 karakter olabilir.',
+    ));
+
+    final box = await Hive.openBox<String>(SyncManager.boxName);
+    final manager = SyncManager(
+      networkInfo: networkInfo,
+      dioClient: dioClient,
+      syncBox: box,
+      currentUserId: () => 1,
+    );
+
+    await manager.addToQueue(
+      '/social/chat/send',
+      <String, dynamic>{'conversationId': 10, 'content': 'selam', 'localId': 'L1'},
+    );
+
+    await manager.syncPendingData();
+
+    expect(manager.rejectedRecords().single.localId, equals('L1'));
+  });
 }
+

@@ -31,10 +31,12 @@ class AuthInterceptor extends Interceptor {
     final deviceId = await _deviceService.getDeviceId();
     options.headers[NetworkConstants.deviceIdHeader] = deviceId;
 
-    // 2. Access Token Ekle (Eğer Login/Register değilse)
+    // 2. Access Token Ekle (Login/Register/Refresh değilse). Yenileme çerezle doğrulanır; süresi dolmuş
+    // jeton eklenirse sunucunun JWT filtresi isteği denetleyiciye varmadan 401'le keser (K4-12).
     final bool isAuthRoute =
         options.path.contains('/auth/login') ||
-        options.path.contains('/auth/register');
+        options.path.contains('/auth/register') ||
+        options.path.contains('/auth/refresh');
     if (!isAuthRoute) {
       final token = await _storage.read(key: StorageKeys.accessToken);
       if (token != null) {

@@ -13,6 +13,8 @@ class MessageModel extends Equatable {
   final int? packageId;
   final String? packageName;
   final double? packagePrice;
+  /// Yalnızca cihazda üretilen geçici (kuyruktaki) balonda dolu: kuyruk kaydının cihaz kimliği (G-80).
+  final String? localId;
 
   const MessageModel({
     required this.id,
@@ -26,6 +28,7 @@ class MessageModel extends Equatable {
     this.packageId,
     this.packageName,
     this.packagePrice,
+    this.localId,
   });
 
   factory MessageModel.fromJson(Map<String, dynamic> json) {
@@ -63,6 +66,7 @@ class MessageModel extends Equatable {
         packageId,
         packageName,
         packagePrice,
+        localId,
       ];
 
   MessageModel copyWith({
@@ -77,6 +81,7 @@ class MessageModel extends Equatable {
     int? packageId,
     String? packageName,
     double? packagePrice,
+    String? localId,
   }) {
     return MessageModel(
       id: id ?? this.id,
@@ -90,6 +95,7 @@ class MessageModel extends Equatable {
       packageId: packageId ?? this.packageId,
       packageName: packageName ?? this.packageName,
       packagePrice: packagePrice ?? this.packagePrice,
+      localId: localId ?? this.localId,
     );
   }
 }

@@ -161,4 +161,21 @@ void main() {
     expect(await storedToken(), isNull);
     verify(() => authBloc.add(const LogoutRequested(syncPending: false))).called(1);
   }, timeout: hangGuard);
+
+  test('yenileme isteğine erişim jetonu eklenmez, diğer isteklere eklenir', () async {
+    adapter.replies['/profile'] = [
+      (401, <String, dynamic>{'message': 'Yetkisiz'}),
+      (200, <String, dynamic>{'success': true, 'data': 'veri'}),
+    ];
+    adapter.replies[refreshPath] = [(200, refreshOk)];
+
+    await dio.get<Map<String, dynamic>>('/profile');
+
+    expect(
+      adapter.calls.where(((String, String?) c) => c.$1 == refreshPath).map(((String, String?) c) => c.$2).toList(),
+      equals(<String?>[null]),
+    );
+    expect(adapter.calls.first, ('/profile', 'Bearer eski'));
+  }, timeout: hangGuard);
 }
+

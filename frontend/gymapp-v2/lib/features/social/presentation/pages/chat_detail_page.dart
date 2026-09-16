@@ -13,8 +13,8 @@ import '../bloc/chat_bloc.dart';
 import 'package:gymapp_v2/core/network/error_message.dart';
 import '../../data/models/conversation_model.dart';
 import '../../data/models/message_model.dart';
-import '../../data/models/message_status.dart';
 import '../../data/repositories/chat_repository.dart';
+import '../widgets/message_status_icon.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:go_router/go_router.dart';
@@ -22,7 +22,6 @@ import 'package:gymapp_v2/core/di/injection_container.dart';
 import 'package:gymapp_v2/features/finance/models/finance_models.dart';
 
 const double _kBubbleMaxWidthRatio = 0.75;
-const double _kStatusIconSize = 14.0;
 const double _kImagePlaceholderHeight = 200.0;
 const double _kSendButtonPadding = 12.0;
 const double _kInlineSpinnerSize = 20.0;
@@ -576,36 +575,13 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
                   style: AppTextStyles.timestamp,
                 ),
                 if (isMe) const SizedBox(width: AppSpacing.xxs),
-                if (isMe) _buildStatusIcon(message),
+                if (isMe) MessageStatusIcon(message: message),
               ],
             ),
           ],
         ),
       ),
     );
-  }
-
-  Widget _buildStatusIcon(MessageModel message) {
-    if (message.id < 0) {
-      // Henüz gönderilmedi: kuyrukta bekliyor.
-      return const Icon(Icons.schedule_rounded, size: _kStatusIconSize, color: AppColors.textMuted);
-    }
-    IconData icon;
-    Color color;
-    switch (message.status) {
-      case MessageStatus.read:
-        icon = Icons.done_all_rounded;
-        color = AppColors.info;
-        break;
-      case MessageStatus.delivered:
-        icon = Icons.done_all_rounded;
-        color = AppColors.textMuted;
-        break;
-      case MessageStatus.sent:
-        icon = Icons.done_rounded;
-        color = AppColors.textMuted;
-    }
-    return Icon(icon, size: _kStatusIconSize, color: color);
   }
 
   Widget _buildMessageInput() {

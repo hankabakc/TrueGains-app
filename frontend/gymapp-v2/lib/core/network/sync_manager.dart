@@ -18,10 +18,13 @@ class RejectedRecord extends Equatable {
   final String reason;
   final DateTime? createdAt;
 
-  const RejectedRecord({required this.key, required this.endpoint, required this.reason, this.createdAt});
+  /// Yükteki cihaz kimliği (G-79); mesaj balonu reddedilen kaydını bununla bulur (G-80). Yükte yoksa null.
+  final String? localId;
+
+  const RejectedRecord({required this.key, required this.endpoint, required this.reason, this.createdAt, this.localId});
 
   @override
-  List<Object?> get props => [key, endpoint, reason, createdAt];
+  List<Object?> get props => [key, endpoint, reason, createdAt, localId];
 }
 
 /// Çevrimdışı yazma kuyruğu: bağlantı yokken yapılan istekleri saklar, bağlantı gelince gönderir.
@@ -174,6 +177,7 @@ class SyncManager {
           endpoint: item['endpoint'] as String,
           reason: (item['reason'] as String?) ?? _defaultReason,
           createdAt: DateTime.tryParse((item['timestamp'] as String?) ?? ''),
+          localId: (item['payload'] as Map<String, dynamic>?)?['localId'] as String?,
         ));
       } on FormatException {
         continue;
