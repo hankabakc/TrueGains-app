@@ -118,6 +118,9 @@ class OfflineCacheInterceptor extends Interceptor {
     DioExceptionType.sendTimeout,
   };
 
+  /// Sunucuya hiç ulaşılamadı mı (cevap yok). Oturum geri yükleme de aynı tanımı kullanır (KR15).
+  static bool isUnreachable(DioException err) => _unreachable.contains(err.type);
+
   @override
   void onResponse(Response<dynamic> response, ResponseInterceptorHandler handler) async {
     _status?.markFresh();
@@ -129,7 +132,7 @@ class OfflineCacheInterceptor extends Interceptor {
 
   @override
   void onError(DioException err, ErrorInterceptorHandler handler) {
-    if (err.requestOptions.method != 'GET' || !_unreachable.contains(err.type)) {
+    if (err.requestOptions.method != 'GET' || !isUnreachable(err)) {
       handler.next(err);
       return;
     }

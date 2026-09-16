@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:cookie_jar/cookie_jar.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/services.dart';
@@ -8,6 +10,7 @@ import 'package:gymapp_v2/core/constants/storage_keys.dart';
 import 'package:gymapp_v2/core/network/dio_client.dart';
 import 'package:gymapp_v2/core/network/offline_cache.dart';
 import 'package:gymapp_v2/core/network/sync_manager.dart';
+import 'package:gymapp_v2/features/auth/data/models/user_role.dart';
 import 'package:gymapp_v2/features/auth/data/repositories/auth_repository.dart';
 import 'package:gymapp_v2/features/auth/data/services/auth_api_service.dart';
 import 'package:mocktail/mocktail.dart';
@@ -21,6 +24,12 @@ class MockOfflineCache extends Mock implements OfflineCache {}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  final String savedUser = jsonEncode({'id': 7, 'email': 'sporcu@test.com', 'role': 'CLIENT'});
+  DioException offline() => DioException(
+        requestOptions: RequestOptions(path: '/auth/refresh'),
+        type: DioExceptionType.connectionError,
+      );
 
   late MockDioClient mockDioClient;
   late MockDio mockDio;
@@ -156,6 +165,165 @@ void main() {
     verify(() => mockSyncManager.syncPendingData()).called(1);
   });
 
+  test('sunucuya ulaşılamazsa son oturum telefondaki bilgiyle açılır', () async {
+    when(() => mockDio.post<Map<String, dynamic>>('/auth/refresh', data: any(named: 'data')))
+        .thenThrow(offline());
+    when(() => mockSecureStorage.read(key: StorageKeys.accessToken))
+        .thenAnswer((_) async => 'tok');
+    when(() => mockSecureStorage.read(key: StorageKeys.sessionUser))
+        .thenAnswer((_) async => savedUser);
+
+    final result = await authRepository.restoreSession();
+
+    expect(result.success, isTrue);
+    expect(result.data!.id, equals(7));
+    expect(result.data!.role, equals(UserRole.CLIENT));
+    expect(result.data!.accessToken, equals('tok'));
+  });
+
+  test('sunucu reddederse son oturum açılmaz', () async {
+    when(() => mockDio.post<Map<String, dynamic>>('/auth/refresh', data: any(named: 'data')))
+        .thenThrow(DioException(
+      requestOptions: RequestOptions(path: '/auth/refresh'),
+      type: DioExceptionType.badResponse,
+      response: Response<Map<String, dynamic>>(
+        requestOptions: RequestOptions(path: '/auth/refresh'),
+        statusCode: 401,
+        data: {'message': 'Refresh Token süresi dolmuş.'},
+      ),
+    ));
+    when(() => mockSecureStorage.read(key: StorageKeys.accessToken))
+        .thenAnswer((_) async => 'tok');
+    when(() => mockSecureStorage.read(key: StorageKeys.sessionUser))
+        .thenAnswer((_) async => savedUser);
+
+    final result = await authRepository.restoreSession();
+
+    expect(result.success, isFalse);
+  });
+
+  test('çıkış yapılmışsa (jeton yok) internetsiz açılışta oturum açılmaz', () async {
+    when(() => mockDio.post<Map<String, dynamic>>('/auth/refresh', data: any(named: 'data')))
+        .thenThrow(offline());
+    when(() => mockSecureStorage.read(key: StorageKeys.accessToken))
+        .thenAnswer((_) async => null);
+    when(() => mockSecureStorage.read(key: StorageKeys.sessionUser))
+        .thenAnswer((_) async => savedUser);
+
+    final result = await authRepository.restoreSession();
+
+    expect(result.success, isFalse);
+  });
+
+  test('kullanıcı bilgisi yoksa internetsiz açılışta oturum açılmaz', () async {
+    when(() => mockDio.post<Map<String, dynamic>>('/auth/refresh', data: any(named: 'data')))
+        .thenThrow(offline());
+    when(() => mockSecureStorage.read(key: StorageKeys.accessToken))
+        .thenAnswer((_) async => 'tok');
+    when(() => mockSecureStorage.read(key: StorageKeys.sessionUser))
+        .thenAnswer((_) async => null);
+
+    final result = await authRepository.restoreSession();
+
+    expect(result.success, isFalse);
+  });
+
+  test('girişte kullanıcı bilgisi telefonda saklanır', () async {
+    final responsePayload = <String, dynamic>{
+      'success': true,
+      'data': {
+        'access_token': 'mock_access_token_123',
+        'token_type': 'Bearer',
+        'expires_in': 3600,
+        'user': {
+          'id': 1,
+          'email': 'test@example.com',
+          'role': 'CLIENT',
+        },
+      },
+    };
+
+    when(() => mockDio.post<Map<String, dynamic>>(
+          '/auth/login',
+          data: any(named: 'data'),
+        )).thenAnswer((_) async => Response<Map<String, dynamic>>(
+          requestOptions: RequestOptions(path: '/auth/login'),
+          statusCode: 200,
+          data: responsePayload,
+        ));
+
+    await authRepository.login('test@example.com', 'Password123!');
+
+    verify(() => mockSecureStorage.write(
+          key: StorageKeys.sessionUser,
+          value: jsonEncode({'id': 1, 'email': 'test@example.com', 'role': 'CLIENT'}),
+        )).called(1);
+  });
+
+  test('OTP doğrulanınca kullanıcı bilgisi saklanır', () async {
+    final responsePayload = <String, dynamic>{
+      'success': true,
+      'data': {
+        'access_token': 'mock_access_token_123',
+        'token_type': 'Bearer',
+        'expires_in': 3600,
+        'user': {
+          'id': 1,
+          'email': 'test@example.com',
+          'role': 'CLIENT',
+        },
+      },
+    };
+
+    when(() => mockDio.post<Map<String, dynamic>>(
+          '/auth/verify-otp',
+          data: any(named: 'data'),
+        )).thenAnswer((_) async => Response<Map<String, dynamic>>(
+          requestOptions: RequestOptions(path: '/auth/verify-otp'),
+          statusCode: 200,
+          data: responsePayload,
+        ));
+
+    await authRepository.verifyOtp('test@example.com', '123456');
+
+    verify(() => mockSecureStorage.write(
+          key: StorageKeys.sessionUser,
+          value: jsonEncode({'id': 1, 'email': 'test@example.com', 'role': 'CLIENT'}),
+        )).called(1);
+  });
+
+  test('oturum sunucuyla yenilenince kullanıcı bilgisi güncellenir', () async {
+    final responsePayload = <String, dynamic>{
+      'success': true,
+      'data': {
+        'access_token': 'mock_access_token_123',
+        'token_type': 'Bearer',
+        'expires_in': 3600,
+        'user': {
+          'id': 1,
+          'email': 'test@example.com',
+          'role': 'CLIENT',
+        },
+      },
+    };
+
+    when(() => mockDio.post<Map<String, dynamic>>(
+          '/auth/refresh',
+          data: any(named: 'data'),
+        )).thenAnswer((_) async => Response<Map<String, dynamic>>(
+          requestOptions: RequestOptions(path: '/auth/refresh'),
+          statusCode: 200,
+          data: responsePayload,
+        ));
+
+    await authRepository.restoreSession();
+
+    verify(() => mockSecureStorage.write(
+          key: StorageKeys.sessionUser,
+          value: jsonEncode({'id': 1, 'email': 'test@example.com', 'role': 'CLIENT'}),
+        )).called(1);
+  });
+
   group('çıkış', () {
     setUp(() {
       when(() => mockSecureStorage.read(key: StorageKeys.accessToken))
@@ -238,6 +406,12 @@ void main() {
 
       verifyNever(() => mockSyncManager.syncPendingData());
       verify(() => mockOfflineCache.clear()).called(1);
+    });
+
+    test('çıkışta kullanıcı bilgisi de silinir', () async {
+      await authRepository.logout();
+
+      verify(() => mockSecureStorage.delete(key: StorageKeys.sessionUser)).called(1);
     });
   });
 }

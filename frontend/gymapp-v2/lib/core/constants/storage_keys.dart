@@ -8,4 +8,8 @@ class StorageKeys {
 
   /// Çevrimdışı yazma kuyruğunun (Hive) AES anahtarı.
   static const String syncQueueKey = 'syncQueueKey';
+
+  /// Son giriş yapan kullanıcının kimliği/e-postası/rolü (JSON). İnternetsiz açılışta oturum bununla
+  /// açılır (KR15); çıkışta silinir.
+  static const String sessionUser = 'sessionUser';
 }

@@ -1,8 +1,11 @@
+import 'dart:convert';
+
 import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../../../../core/network/api_response.dart';
 import '../../../../core/network/dio_client.dart';
 import '../../../../core/network/device_service.dart';
+import '../../../../core/network/offline_cache.dart';
 import '../../../../core/constants/storage_keys.dart';
 import '../../../../core/constants/network_constants.dart';
 import '../models/auth_model.dart';
@@ -29,12 +32,7 @@ class AuthApiService {
         final authData = AuthModel.fromJson(
           responseData['data'] as Map<String, dynamic>,
         );
-        if (authData.accessToken.isNotEmpty) {
-          await _secureStorage.write(
-            key: StorageKeys.accessToken,
-            value: authData.accessToken,
-          );
-        }
+        await _saveSession(authData);
       }
 
       return ApiResponse<AuthModel>.fromJson(
@@ -65,12 +63,7 @@ class AuthApiService {
         final authData = AuthModel.fromJson(
           responseData['data'] as Map<String, dynamic>,
         );
-        if (authData.accessToken.isNotEmpty) {
-          await _secureStorage.write(
-            key: StorageKeys.accessToken,
-            value: authData.accessToken,
-          );
-        }
+        await _saveSession(authData);
       }
 
       return ApiResponse<AuthModel>.fromJson(
@@ -78,6 +71,19 @@ class AuthApiService {
         (json) => AuthModel.fromJson(json as Map<String, dynamic>),
       );
     } on DioException catch (e) {
+      // KR15 (G-81): sunucuya ulaşılamıyorsa son oturum telefondaki bilgiyle açılır. Sunucu cevap
+      // verip reddettiyse açılmaz. İnternet gelince ilk istekte AuthInterceptor oturumu doğrular.
+      if (OfflineCacheInterceptor.isUnreachable(e)) {
+        final AuthModel? saved = await _readSavedSession();
+        if (saved != null) {
+          return ApiResponse<AuthModel>(
+            success: true,
+            message: 'Çevrimdışı oturum',
+            data: saved,
+            timestamp: DateTime.now().toIso8601String(),
+          );
+        }
+      }
       return _handleError(e);
     }
   }
@@ -117,12 +123,7 @@ class AuthApiService {
         final authData = AuthModel.fromJson(
           responseData['data'] as Map<String, dynamic>,
         );
-        if (authData.accessToken.isNotEmpty) {
-          await _secureStorage.write(
-            key: StorageKeys.accessToken,
-            value: authData.accessToken,
-          );
-        }
+        await _saveSession(authData);
       }
 
       return ApiResponse<AuthModel>.fromJson(
@@ -203,6 +204,7 @@ class AuthApiService {
   Future<void> logout() async {
     final String? token = await _secureStorage.read(key: StorageKeys.accessToken);
     await _secureStorage.delete(key: StorageKeys.accessToken);
+    await _secureStorage.delete(key: StorageKeys.sessionUser);
     await _dioClient.cookieJar.deleteAll();
     if (token == null) return;
     try {
@@ -215,6 +217,27 @@ class AuthApiService {
     } catch (_) {
       // Sunucuya ulaşılamadı: cihazdaki oturum yine kapandı; sunucudaki yenileme jetonu
       // kendi süresi dolunca geçersizleşir.
+    }
+  }
+
+  /// Jetonu ve kullanıcı bilgisini birlikte saklar; internetsiz açılış ikisine de bakar (KR15).
+  Future<void> _saveSession(AuthModel authData) async {
+    if (authData.accessToken.isEmpty) return;
+    await _secureStorage.write(key: StorageKeys.accessToken, value: authData.accessToken);
+    await _secureStorage.write(key: StorageKeys.sessionUser, value: jsonEncode(authData.user.toJson()));
+  }
+
+  /// Telefondaki son oturum. Jeton ya da kullanıcı bilgisi yoksa (çıkış yapılmış, oturum düşmüş) null.
+  Future<AuthModel?> _readSavedSession() async {
+    final String? token = await _secureStorage.read(key: StorageKeys.accessToken);
+    final String? userJson = await _secureStorage.read(key: StorageKeys.sessionUser);
+    if (token == null || token.isEmpty || userJson == null) return null;
+    try {
+      final UserModel user = UserModel.fromJson(jsonDecode(userJson) as Map<String, dynamic>);
+      if (user.id == 0) return null;
+      return AuthModel(user: user, accessToken: token, tokenType: 'Bearer', expiresIn: 0);
+    } on FormatException {
+      return null;
     }
   }
 

@@ -48,6 +48,12 @@ class UserModel {
     );
   }
 
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'id': id,
+        'email': email,
+        'role': role.toJsonString(),
+      };
+
   static int _toInt(Object? value) {
     if (value is int) return value;
     if (value is String) return int.parse(value);
