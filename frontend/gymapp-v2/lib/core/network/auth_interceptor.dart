@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'device_service.dart';
+import 'offline_cache.dart';
 import '../constants/network_constants.dart';
 import '../constants/storage_keys.dart';
 import '../di/injection_container.dart';
@@ -77,47 +78,40 @@ class AuthInterceptor extends Interceptor {
       _isRefreshing = true;
       final deviceId = await _deviceService.getDeviceId();
 
+      String? newAccessToken;
       try {
         final refreshResponse = await _dio.post<Map<String, dynamic>>(
           '/auth/refresh',
           data: {'deviceId': deviceId},
         );
-
-        if (refreshResponse.statusCode == 200) {
-          final Map<String, dynamic>? responseData = refreshResponse.data;
-          final String? newAccessToken =
-              (responseData?['data'] as Map<String, dynamic>?)?['accessToken']
-                  as String?;
-
-          if (newAccessToken != null) {
-            await _storage.write(
-              key: StorageKeys.accessToken,
-              value: newAccessToken,
-            );
-
-            // Kuyruktaki bekleyen tüm isteklere yeni token'ı dağıt
-            for (var completer in _refreshQueue) {
-              completer.complete(newAccessToken);
-            }
-            _refreshQueue.clear();
-            _isRefreshing = false;
-
-            // Mevcut (ilk hata alan) isteği yeni token ile tekrarla
-            final retryResponse = await _retry(err.requestOptions, newAccessToken);
-            return handler.resolve(retryResponse);
-          }
+        // Sunucu jetonu `access_token` adıyla döndürür (AuthResponse); AuthModel.fromJson da bunu okur.
+        newAccessToken = (refreshResponse.data?['data'] as Map<String, dynamic>?)?['access_token'] as String?;
+        if (newAccessToken != null) {
+          await _storage.write(key: StorageKeys.accessToken, value: newAccessToken);
         }
       } catch (e) {
-        // Refresh başarısızsa kuyruğu null ile serbest bırak ve token'ı sil
-        for (var completer in _refreshQueue) {
-          completer.complete(null);
+        // KR15 (G-82): sunucuya ulaşılamadıysa oturum açık kalır, çağırana özgün 401 gider (kuyruk sonra
+        // dener). Sunucu yenilemeyi reddettiyse jeton silinir ve çıkış yapılır.
+        if (!(e is DioException && OfflineCacheInterceptor.isUnreachable(e))) {
+          await _storage.delete(key: StorageKeys.accessToken);
+          sl<AuthBloc>().add(const LogoutRequested(syncPending: false));
+        }
+      } finally {
+        // Kilit her yolda açılır; açık kalırsa sonraki her 401 sonsuza kadar bekler.
+        for (final completer in _refreshQueue) {
+          completer.complete(newAccessToken);
         }
         _refreshQueue.clear();
         _isRefreshing = false;
-        await _storage.delete(key: StorageKeys.accessToken);
+      }
 
-        // Oturumu kapat ve login sayfasına yönlendirilmeyi tetikle
-        sl<AuthBloc>().add(const LogoutRequested(syncPending: false));
+      if (newAccessToken != null) {
+        // Tekrarlanan isteğin kendi hatası (409, 422, bağlantı) oturumu kapatmaz; çağırana o hata gider.
+        try {
+          return handler.resolve(await _retry(err.requestOptions, newAccessToken));
+        } on DioException catch (retryError) {
+          return handler.next(retryError);
+        }
       }
     }
     return handler.next(err);
