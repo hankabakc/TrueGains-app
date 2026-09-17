@@ -5,6 +5,7 @@ import com.gym.v2.nutrition.dto.LogMealRequest;
 import com.gym.v2.nutrition.dto.MealEntryResponse;
 import com.gym.v2.nutrition.entity.MealType;
 import com.gym.v2.nutrition.service.MealLogService;
+import jakarta.validation.Valid;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.*;
 
@@ -46,7 +47,7 @@ public class MealLogController {
 	}
 
 	@PostMapping("/log")
-	public ApiResponse<MealEntryResponse> logMeal(@RequestBody LogMealRequest request) {
+	public ApiResponse<MealEntryResponse> logMeal(@Valid @RequestBody LogMealRequest request) {
 		return ApiResponse.success(mealLogService.logMealEntry(request), "Öğün başarıyla kaydedildi.", clock.instant());
 	}
 

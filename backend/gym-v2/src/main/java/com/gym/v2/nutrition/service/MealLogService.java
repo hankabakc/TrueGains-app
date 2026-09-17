@@ -17,8 +17,12 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Öğün günlüğü (Meal Log) servis katmanı. Günlük tüketilen öğünlerin kaydedilmesini ve
@@ -76,6 +80,14 @@ public class MealLogService {
 				return mealEntryRepository.save(newEntry);
 			});
 
+		// Tekrar koruması (G-72): kuyruktan ya da zaman aşımında yeniden gelen kalem
+		// ikinci kez yazılmaz.
+		Set<String> seenLocalIds = entry.getItems()
+			.stream()
+			.map(MealItem::getLocalId)
+			.filter(Objects::nonNull)
+			.collect(Collectors.toCollection(HashSet::new));
+
 		// Yeni kalemleri mevcut listeye ekliyoruz (Overwrite yerine Merge stratejisi)
 		if (request.items() != null) {
 			for (var itemReq : request.items()) {
@@ -83,10 +95,15 @@ public class MealLogService {
 					continue;
 				}
 
+				if (itemReq.localId() != null && !seenLocalIds.add(itemReq.localId())) {
+					continue;
+				}
+
 				MealItem mealItem = new MealItem();
 				mealItem.setMealEntry(entry);
 				mealItem.setAmount(itemReq.amount());
 				mealItem.setNote(itemReq.note());
+				mealItem.setLocalId(itemReq.localId());
 
 				Long recipeId = itemReq.recipeId();
 

@@ -1,6 +1,7 @@
 package com.gym.v2.nutrition.dto;
 
 import com.gym.v2.nutrition.entity.MealType;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import java.time.Instant;
 import java.util.List;
@@ -12,5 +13,5 @@ public record LogMealRequest(@NotNull(message = "{validation.mealtype.notnull}")
 
 		Instant takenDatetime,
 
-		List<LogMealItemRequest> items) {
+		List<@Valid LogMealItemRequest> items) {
 }

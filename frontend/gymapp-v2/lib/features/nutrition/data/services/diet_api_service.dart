@@ -8,6 +8,8 @@ import '../models/meal_entry_model.dart';
 import 'base_nutrition_service.dart';
 
 class DietApiService extends BaseNutritionService {
+  static const String mealLogPath = '/nutrition/meal-logs/log';
+
   DietApiService(super.dioClient);
 
   Future<ApiResponse<DailyDietLogModel>> getDailyDietLog(String date) async {
@@ -398,7 +400,7 @@ class DietApiService extends BaseNutritionService {
   }) async {
     try {
       final response = await dioClient.dio.post<Map<String, dynamic>>(
-        '/nutrition/meal-logs/log',
+        mealLogPath,
         data: {
           'mealType': mealTypeStr,
           'items': items,

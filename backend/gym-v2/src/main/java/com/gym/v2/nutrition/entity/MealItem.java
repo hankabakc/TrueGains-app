@@ -9,7 +9,8 @@ import java.math.BigDecimal;
  * (Besin) kaç gram yediğini tutar.
  */
 @Entity
-@Table(name = "meal_item")
+@Table(name = "meal_item", uniqueConstraints = @UniqueConstraint(name = "uq_meal_item_entry_local",
+		columnNames = { "meal_entry_id", "local_id" }))
 public class MealItem {
 
 	@Id
@@ -36,6 +37,10 @@ public class MealItem {
 
 	@Column(name = "note")
 	private String note;
+
+	/** Cihazın kaleme verdiği kimlik (G-72); aynı öğün kaydında tekrarı önler. */
+	@Column(name = "local_id", length = 36)
+	private String localId;
 
 	@Column(name = "calories")
 	private BigDecimal calories;
@@ -157,6 +162,14 @@ public class MealItem {
 
 	public void setNote(String note) {
 		this.note = note;
+	}
+
+	public String getLocalId() {
+		return localId;
+	}
+
+	public void setLocalId(String localId) {
+		this.localId = localId;
 	}
 
 	public BigDecimal getCalories() {

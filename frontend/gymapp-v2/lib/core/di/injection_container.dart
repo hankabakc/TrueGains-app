@@ -170,6 +170,8 @@ Future<void> initDependencies() async {
       waterService: sl<WaterApiService>(),
       foodService: sl<FoodApiService>(),
       analyticsService: sl<AnalyticsApiService>(),
+      networkInfo: sl<NetworkInfo>(),
+      syncManager: sl<SyncManager>(),
     ),
   );
   sl.registerLazySingleton(() => ProfileRepository(sl<DioClient>()));

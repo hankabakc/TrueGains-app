@@ -117,7 +117,7 @@ class MealLogServiceTest {
 		when(foodRepository.findById(10L)).thenReturn(Optional.of(food(10L)));
 
 		service.logMealEntry(new LogMealRequest(MealType.KAHVALTI, NOW,
-				List.of(new LogMealItemRequest(10L, null, new BigDecimal("50"), null))));
+				List.of(new LogMealItemRequest(10L, null, new BigDecimal("50"), null, null))));
 
 		// Aynı öğün için ikinci bir kayıt AÇILMAMALI (aksi hâlde gün içinde çift
 		// kahvaltı).
@@ -142,9 +142,9 @@ class MealLogServiceTest {
 			.thenReturn(Optional.of(existing));
 
 		service.logMealEntry(new LogMealRequest(MealType.OGLE_YEMEGI, NOW,
-				List.of(new LogMealItemRequest(10L, null, null, null),
-						new LogMealItemRequest(10L, null, BigDecimal.ZERO, null),
-						new LogMealItemRequest(10L, null, new BigDecimal("-5"), null))));
+				List.of(new LogMealItemRequest(10L, null, null, null, null),
+						new LogMealItemRequest(10L, null, BigDecimal.ZERO, null, null),
+						new LogMealItemRequest(10L, null, new BigDecimal("-5"), null, null))));
 
 		// Üç kalem de elenmeli; besin bile sorgulanmamalı.
 		assertThat(existing.getItems()).isEmpty();
@@ -159,7 +159,7 @@ class MealLogServiceTest {
 		when(foodRepository.findById(404L)).thenReturn(Optional.empty());
 
 		assertThatThrownBy(() -> service.logMealEntry(new LogMealRequest(MealType.OTHER, NOW,
-				List.of(new LogMealItemRequest(404L, null, new BigDecimal("100"), null)))))
+				List.of(new LogMealItemRequest(404L, null, new BigDecimal("100"), null, null)))))
 			.isInstanceOf(NotFoundException.class);
 	}
 
@@ -171,7 +171,7 @@ class MealLogServiceTest {
 		when(foodRepository.findById(10L)).thenReturn(Optional.of(food(10L)));
 
 		service.logMealEntry(new LogMealRequest(MealType.KAHVALTI, NOW,
-				List.of(new LogMealItemRequest(10L, null, new BigDecimal("50"), null))));
+				List.of(new LogMealItemRequest(10L, null, new BigDecimal("50"), null, null))));
 
 		// Toplam yeniden hesaplanmazsa kullanıcı eski/yanlış günlük değeri görür.
 		verify(nutrientCalculator).calculateMealEntryTotals(existing);

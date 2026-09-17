@@ -17,6 +17,9 @@ import '../models/meal_history_model.dart';
 import '../models/nutrition_dashboard_model.dart';
 import '../models/recipe_model.dart';
 import '../models/ai_recipe_suggestion_response_model.dart';
+import 'package:uuid/uuid.dart';
+import 'package:gymapp_v2/core/network/network_info.dart';
+import 'package:gymapp_v2/core/network/sync_manager.dart';
 import '../services/diet_api_service.dart';
 import '../services/water_api_service.dart';
 import '../services/food_api_service.dart';
@@ -27,6 +30,8 @@ class NutritionRepository {
   final WaterApiService _waterService;
   final FoodApiService _foodService;
   final AnalyticsApiService _analyticsService;
+  final NetworkInfo _networkInfo;
+  final SyncManager _syncManager;
   final FlutterSecureStorage _storage = const FlutterSecureStorage();
   StompClient? _stompClient;
 
@@ -35,10 +40,14 @@ class NutritionRepository {
     required WaterApiService waterService,
     required FoodApiService foodService,
     required AnalyticsApiService analyticsService,
+    required NetworkInfo networkInfo,
+    required SyncManager syncManager,
   })  : _dietService = dietService,
         _waterService = waterService,
         _foodService = foodService,
-        _analyticsService = analyticsService;
+        _analyticsService = analyticsService,
+        _networkInfo = networkInfo,
+        _syncManager = syncManager;
 
   Future<ApiResponse<OcrScanResponseModel>> scanFoodImage(XFile imageFile) {
     return _foodService.scanFoodImage(imageFile);
@@ -218,8 +227,27 @@ class NutritionRepository {
     required MealType mealType,
     required List<Map<String, dynamic>> items,
     DateTime? date,
-  }) {
-    return _dietService.logMeal(mealTypeStr: mealType.toBackendString(), items: items, date: date);
+  }) async {
+    // Tekrar koruması (G-72): her kalem cihazda kimlik alır; çevrimiçi ve kuyruk yolu aynı kimliği taşır.
+    final List<Map<String, dynamic>> itemsWithId = items
+        .map((Map<String, dynamic> item) => <String, dynamic>{...item, 'localId': const Uuid().v4()})
+        .toList();
+
+    if (await _networkInfo.isConnected) {
+      return _dietService.logMeal(mealTypeStr: mealType.toBackendString(), items: itemsWithId, date: date);
+    }
+
+    // KR13 (G-72): bağlantı yoksa öğün kuyruğa alınır. Gün, eklendiği anın günüdür; gönderim anının değil.
+    await _syncManager.addToQueue(DietApiService.mealLogPath, <String, dynamic>{
+      'mealType': mealType.toBackendString(),
+      'items': itemsWithId,
+      'takenDatetime': (date ?? DateTime.now()).toUtc().toIso8601String(),
+    });
+    return ApiResponse<MealEntryModel>(
+      success: true,
+      message: 'Bağlantı yok. Öğün internet geldiğinde kaydedilecek.',
+      timestamp: DateTime.now().toIso8601String(),
+    );
   }
 
   Future<ApiResponse<MealEntryModel>> addFoodToMealLog({
