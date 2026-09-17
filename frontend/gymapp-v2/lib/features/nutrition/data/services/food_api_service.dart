@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:gymapp_v2/core/network/error_message.dart';
 import 'package:gymapp_v2/core/network/api_response.dart';
+import 'package:gymapp_v2/core/network/offline_cache.dart';
 import '../models/food_model.dart';
 import '../models/ocr_scan_response_model.dart';
 import '../models/meal_history_model.dart';
@@ -18,6 +19,37 @@ class FoodApiService extends BaseNutritionService {
         '/nutrition/foods/search',
         queryParameters: {'query': query},
       );
+      return ApiResponse.fromJson(
+        response.data ?? <String, dynamic>{},
+        (json) => (json as List).map((e) => FoodModel.fromJson(e as Map<String, dynamic>)).toList(),
+      );
+    } on DioException catch (e) {
+      // KR16 (G-71): sunucuya ulaşılamıyorsa telefondaki katalogda aranır. Sunucu cevap verdiyse aranmaz.
+      if (OfflineCacheInterceptor.isUnreachable(e)) {
+        final ApiResponse<List<FoodModel>> catalog = await getCatalog();
+        if (catalog.success && catalog.data != null) {
+          final String q = query.trim().toLowerCase();
+          return ApiResponse<List<FoodModel>>(
+            success: true,
+            message: 'Çevrimdışı arama',
+            data: catalog.data!
+                .where((FoodModel f) => f.name.toLowerCase().contains(q) || (f.brand?.toLowerCase().contains(q) ?? false))
+                .toList(),
+            timestamp: DateTime.now().toIso8601String(),
+          );
+        }
+      }
+      return handleError(e);
+    } catch (e) {
+      return ApiResponse.error(friendlyError(e));
+    }
+  }
+
+  /// Görünür besin kataloğunun tamamı (KR16, G-71). Başarılı yanıtı okuma önbelleği saklar; internetsizken
+  /// [searchFood] bunun üzerinden cihazda arar.
+  Future<ApiResponse<List<FoodModel>>> getCatalog() async {
+    try {
+      final response = await dioClient.dio.get<Map<String, dynamic>>('/nutrition/foods/catalog');
       return ApiResponse.fromJson(
         response.data ?? <String, dynamic>{},
         (json) => (json as List).map((e) => FoodModel.fromJson(e as Map<String, dynamic>)).toList(),

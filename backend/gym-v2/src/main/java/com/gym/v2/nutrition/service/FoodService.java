@@ -96,11 +96,33 @@ public class FoodService {
 		AppUser currentUser = userContextService.getCurrentUser();
 		List<Food> localFoods = foodRepository.searchVisible(query, resolveVisibleCreatorIds(currentUser),
 				PageRequest.of(0, SEARCH_RESULT_LIMIT));
+		return toSearchResponses(currentUser.getId(), localFoods);
+	}
 
-		java.util.Map<Long, UserFoodOverride> overrides = loadOverrides(currentUser.getId(), localFoods);
+	/**
+	 * Kullanıcının görebildiği besin kataloğunun tamamı (KR16, G-71). Telefon bunu
+	 * indirir; internetsizken arama cihazda yapılır. Biçim {@link #searchFood} ile
+	 * aynıdır.
+	 * @return FoodResponse listesi, ada göre sıralı
+	 */
+	@Transactional(readOnly = true)
+	public List<FoodResponse> getVisibleCatalog() {
+		AppUser currentUser = userContextService.getCurrentUser();
+		// ponytail: katalog birkaç bin kayıt (KR16), tek istekte tamamı; on binleri
+		// aşarsa sayfalı + değişenler.
+		List<Food> foods = foodRepository.findAllVisible(resolveVisibleCreatorIds(currentUser));
+		return toSearchResponses(currentUser.getId(), foods);
+	}
+
+	/**
+	 * Ezmesi olan besin önce kişiye özel, sonra orijinal hâliyle listelenir; ezmeler tek
+	 * sorguda yüklenir.
+	 */
+	private List<FoodResponse> toSearchResponses(Long userId, List<Food> foods) {
+		java.util.Map<Long, UserFoodOverride> overrides = loadOverrides(userId, foods);
 
 		List<FoodResponse> results = new ArrayList<>();
-		for (Food food : localFoods) {
+		for (Food food : foods) {
 			UserFoodOverride override = overrides.get(food.getId());
 			if (override != null) {
 				// Her iki versiyonu da ekle: Önce özelleştirilmiş olan

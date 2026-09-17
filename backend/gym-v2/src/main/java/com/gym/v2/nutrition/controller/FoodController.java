@@ -40,6 +40,16 @@ public class FoodController {
 		return ApiResponse.success(response, "Besin arama sonuçları listelendi.", clock.instant());
 	}
 
+	/**
+	 * GET /api/v1/nutrition/foods/catalog Görünür besin kataloğunun tamamı (internetsiz
+	 * arama, KR16).
+	 */
+	@GetMapping("/catalog")
+	public ApiResponse<List<FoodResponse>> getCatalog() {
+		List<FoodResponse> response = foodService.getVisibleCatalog();
+		return ApiResponse.success(response, "Besin kataloğu listelendi.", clock.instant());
+	}
+
 	@GetMapping("/recent-grouped")
 	public ApiResponse<List<MealHistoryResponse>> getRecentGroupedFoods() {
 		List<MealHistoryResponse> response = foodService.getRecentGroupedFoods();

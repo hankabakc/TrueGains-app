@@ -71,6 +71,11 @@ class NutritionRepository {
     return _foodService.searchFood(query);
   }
 
+  /// Telefondaki besin kataloğunu indirir / tazeler (KR16, G-71); yanıtı okuma önbelleği saklar.
+  Future<ApiResponse<List<FoodModel>>> refreshFoodCatalog() {
+    return _foodService.getCatalog();
+  }
+
   Future<ApiResponse<FoodModel>> createFood(FoodModel food) {
     return _foodService.createFood(food);
   }

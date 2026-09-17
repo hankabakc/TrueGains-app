@@ -2,6 +2,7 @@ package com.gym.v2.nutrition;
 
 import com.gym.v2.auth.entity.AppUser;
 import com.gym.v2.auth.entity.UserRole;
+import com.gym.v2.nutrition.dto.FoodResponse;
 import com.gym.v2.nutrition.entity.Food;
 import com.gym.v2.nutrition.entity.UserFoodOverride;
 import com.gym.v2.nutrition.repository.FoodRepository;
@@ -166,6 +167,62 @@ class FoodSearchQueryCountIT extends IntegrationTestBase {
 
 		// Tavansız arama tek harflik sorguda tüm tabloyu döndürüyordu.
 		assertThat(results).hasSize(50);
+	}
+
+	@Test
+	void getVisibleCatalog_queryCountDoesNotGrowWithFoodCount() {
+		AppUser lightUser = createUser("catalog_light@test.com", UserRole.CLIENT);
+		AppUser heavyUser = createUser("catalog_heavy@test.com", UserRole.CLIENT);
+		seedFoods(lightUser, 1, "katalog");
+		seedFoods(heavyUser, 4, "katalog");
+
+		long lightQueries = queryCountFor(lightUser.getEmail(), () -> foodService.getVisibleCatalog());
+		long heavyQueries = queryCountFor(heavyUser.getEmail(), () -> foodService.getVisibleCatalog());
+
+		assertThat(heavyQueries)
+			.as("1 besin %d sorgu, 4 besin %d sorgu ürettiyse maliyet katalog boyuyla büyüyor", lightQueries,
+					heavyQueries)
+			.isEqualTo(lightQueries);
+	}
+
+	@Test
+	void getVisibleCatalog_hidesOtherUsersCustomFoods() {
+		AppUser owner = createUser("catalog_owner@test.com", UserRole.CLIENT);
+		AppUser stranger = createUser("catalog_stranger@test.com", UserRole.CLIENT);
+		newFood("gizli tarif", owner);
+		newFood("kendi tarifim", stranger);
+
+		SecurityContextHolder.getContext()
+			.setAuthentication(new UsernamePasswordAuthenticationToken(stranger.getEmail(), null, List.of()));
+		List<String> names = foodService.getVisibleCatalog().stream().map(FoodResponse::name).toList();
+
+		// Başkasının özel besini (koçu değilse) telefona inmemeli (KURALLAR §1.3).
+		assertThat(names).contains("kendi tarifim").doesNotContain("gizli tarif");
+	}
+
+	@Test
+	void getVisibleCatalog_keepsOverriddenAndOriginalValues() {
+		AppUser user = createUser("catalog_override@test.com", UserRole.CLIENT);
+		Food food = newFood("nohut", user);
+
+		UserFoodOverride override = new UserFoodOverride();
+		override.setUser(user);
+		override.setFood(food);
+		override.setCalories(new BigDecimal("555"));
+		overrideRepository.saveAndFlush(override);
+
+		SecurityContextHolder.getContext()
+			.setAuthentication(new UsernamePasswordAuthenticationToken(user.getEmail(), null, List.of()));
+		List<FoodResponse> nohut = foodService.getVisibleCatalog()
+			.stream()
+			.filter(response -> "nohut".equals(response.name()))
+			.toList();
+
+		// Katalog telefona inerken kişiye özel değer de orijinal de kaybolmamalı
+		// (KURALLAR §4/5).
+		assertThat(nohut).hasSize(2);
+		assertThat(nohut.get(0).calories()).isEqualByComparingTo("555");
+		assertThat(nohut.get(1).calories()).isEqualByComparingTo("100");
 	}
 
 }

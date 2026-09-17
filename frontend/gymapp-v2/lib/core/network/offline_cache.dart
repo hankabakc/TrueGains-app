@@ -19,6 +19,9 @@ class OfflineCache {
   /// gerekirse her kayda erişim zamanı eklenmeli.
   static const int maxEntries = 200;
 
+  /// Tavan dolunca silinmeyen referans verisi (G-71): internetsiz besin araması ve program oluşturma bunlara dayanır.
+  static const Set<String> pinnedKeys = {'/nutrition/foods/catalog?', '/training/exercises?'};
+
   /// Kutu her erişimde aranır: böylece önbellek, açılış sırasına bağımlılık
   /// kurmadan (kutu henüz açılmamışsa sessizce devre dışı) çalışır.
   Box<String>? get _box => Hive.isBoxOpen(boxName) ? Hive.box<String>(boxName) : null;
@@ -35,7 +38,7 @@ class OfflineCache {
     final Box<String>? box = _box;
     if (box == null || data == null) return;
     if (box.length >= maxEntries && !box.containsKey(key)) {
-      await box.clear();
+      await box.deleteAll(box.keys.where((dynamic k) => !pinnedKeys.contains(k)).toList());
     }
     await box.put(key, jsonEncode({'t': DateTime.now().toIso8601String(), 'd': data}));
   }

@@ -154,6 +154,21 @@ class FoodServiceTest {
 		assertThat(capturedVisibleCreatorIds()).containsExactly(2L);
 	}
 
+	@Test
+	@SuppressWarnings("unchecked")
+	void getVisibleCatalog_clientWithCoach_seesOwnAndCoachFoodsOnly() {
+		AppUser client = userWithId(1L, "sporcu@test.com", UserRole.CLIENT);
+		when(userContextService.getCurrentUser()).thenReturn(client);
+		when(clientRepository.findByUserId(1L)).thenReturn(Optional.of(clientEntity(1L, 2L)));
+		when(foodRepository.findAllVisible(any())).thenReturn(Collections.emptyList());
+
+		service.getVisibleCatalog();
+
+		ArgumentCaptor<List<Long>> captor = ArgumentCaptor.forClass(List.class);
+		verify(foodRepository).findAllVisible(captor.capture());
+		assertThat(captor.getValue()).containsExactlyInAnyOrder(1L, 2L);
+	}
+
 	// ---------------------------------------------------------------------------
 	// Özel besin oluşturma
 	// ---------------------------------------------------------------------------

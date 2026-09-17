@@ -23,6 +23,13 @@ public interface FoodRepository extends JpaRepository<Food, Long> {
 			Pageable pageable);
 
 	/**
+	 * Görünür besin kataloğunun tamamı (KR16, G-71): global besinler VEYA kullanıcının
+	 * erişebildiği creatorId'ler.
+	 */
+	@Query("SELECT f FROM Food f WHERE f.isGlobal = true OR f.creatorId IN :creatorIds ORDER BY f.name ASC")
+	List<Food> findAllVisible(@Param("creatorIds") List<Long> creatorIds);
+
+	/**
 	 * Oluşturan kullanıcıya göre besin sayısını döner (soft limit kontrolü).
 	 */
 	long countByCreatorId(Long creatorId);

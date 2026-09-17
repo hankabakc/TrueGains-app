@@ -160,6 +160,25 @@ void main() {
     expect(cached.data!['data'], 'son');
   });
 
+  test('tavan dolunca referans verisi (besin kataloğu, egzersizler) silinmez', () async {
+    adapter.body = {'success': true, 'data': ['katalog']};
+    await dio.get<Map<String, dynamic>>('/nutrition/foods/catalog');
+    adapter.body = {'success': true, 'data': ['egzersiz']};
+    await dio.get<Map<String, dynamic>>('/training/exercises');
+
+    adapter.body = {'data': 'x'};
+    for (int i = 0; i <= OfflineCache.maxEntries; i++) {
+      await dio.get<Map<String, dynamic>>('/list', queryParameters: {'q': i});
+    }
+
+    adapter.failureType = offline;
+    final catalog = await dio.get<Map<String, dynamic>>('/nutrition/foods/catalog');
+    final exercises = await dio.get<Map<String, dynamic>>('/training/exercises');
+
+    expect(catalog.data!['data'], ['katalog']);
+    expect(exercises.data!['data'], ['egzersiz']);
+  });
+
   test('bağlantı gelince sunucudan gelen taze veri önbelleğin yerine geçiyor', () async {
     adapter.body = {'data': 'eski'};
     await dio.get<Map<String, dynamic>>('/list');
