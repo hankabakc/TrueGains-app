@@ -14,6 +14,8 @@ import com.gym.v2.nutrition.repository.MealItemRepository;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.Collections;
 import java.util.Optional;
@@ -62,6 +64,14 @@ class NutritionAnalyticsServiceTest {
 
 	@Mock
 	private ClientRepository clientRepository;
+
+	/** 18.09.2026 01:30 Türkiye saati = 17.09.2026 22:30 UTC (G-85). */
+	private static final Clock ISTANBUL_AFTER_MIDNIGHT = Clock.fixed(Instant.parse("2026-09-17T22:30:00Z"),
+			ZoneId.of("Europe/Istanbul"));
+
+	private static final Instant TR_DAY_START = Instant.parse("2026-09-17T21:00:00Z");
+
+	private static final Instant TR_DAY_END = Instant.parse("2026-09-18T21:00:00Z");
 
 	private NutritionAnalyticsService service;
 
@@ -193,6 +203,23 @@ class NutritionAnalyticsServiceTest {
 		verify(mealEntryRepository).findDailyNutrientTotals(eq(50L), any(), any());
 		// Hedef kullanıcı verilmediğinde sporcu-koç eşleşmesi sorgulanmamalı.
 		verify(clientRepository, never()).findByUserId(any());
+	}
+
+	@Test
+	void getDashboardData_afterTurkishMidnight_usesTurkishDay() {
+		NutritionAnalyticsService istanbul = new NutritionAnalyticsService(mealEntryRepository, mealItemRepository,
+				dietProgramRepository, userContextService, clientRepository, ISTANBUL_AFTER_MIDNIGHT);
+		when(userContextService.getCurrentUser()).thenReturn(client);
+		Object[] todayTotals = { LocalDate.of(2026, 9, 18), ZERO, ZERO, ZERO, new BigDecimal("500"), ZERO, ZERO, ZERO,
+				ZERO, ZERO };
+		when(mealEntryRepository.findDailyNutrientTotals(any(), any(), any()))
+			.thenReturn(Collections.singletonList(todayTotals));
+
+		NutritionDashboardResponse response = istanbul.getDashboardData(null, null);
+
+		verify(mealEntryRepository).findDailyNutrientTotals(50L, Instant.parse("2026-09-11T21:00:00Z"), TR_DAY_END);
+		assertThat(response.dailySummary().calories()).isEqualByComparingTo("500");
+		assertThat(response.weeklySummary().dailyLogs().getLast().calories()).isEqualByComparingTo("500");
 	}
 
 }

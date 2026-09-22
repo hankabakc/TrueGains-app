@@ -15,6 +15,7 @@ import com.gym.v2.nutrition.repository.MealRepository;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.Collections;
 import java.util.List;
@@ -22,6 +23,7 @@ import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -64,6 +66,14 @@ class DietEntryServiceTest {
 	private NutrientCalculator nutrientCalculator;
 
 	private static final LocalDate DATE = LocalDate.of(2026, 1, 1);
+
+	/** 18.09.2026 01:30 Türkiye saati = 17.09.2026 22:30 UTC (G-85). */
+	private static final Clock ISTANBUL_AFTER_MIDNIGHT = Clock.fixed(Instant.parse("2026-09-17T22:30:00Z"),
+			ZoneId.of("Europe/Istanbul"));
+
+	private static final Instant TR_DAY_START = Instant.parse("2026-09-17T21:00:00Z");
+
+	private static final Instant TR_DAY_END = Instant.parse("2026-09-18T21:00:00Z");
 
 	private DietEntryService service;
 
@@ -210,6 +220,36 @@ class DietEntryServiceTest {
 		assertThat(existing.getItems()).isEmpty();
 		verify(nutrientCalculator).calculateMealEntryTotals(existing);
 		verify(mealEntryRepository).save(existing);
+	}
+
+	private DietEntryService istanbulService() {
+		return new DietEntryService(mealEntryRepository, dietProgramRepository, mealRepository, userContextService,
+				nutritionMapper, nutrientCalculator, ISTANBUL_AFTER_MIDNIGHT);
+	}
+
+	@Test
+	void getDailyLog_usesTurkishDayBounds() {
+		istanbulService().getDailyLog(LocalDate.of(2026, 9, 18));
+
+		verify(mealEntryRepository).findDailyLogs(1L, TR_DAY_START, TR_DAY_END);
+	}
+
+	@Test
+	void togglePlannedMeal_usesTurkishDayBounds() {
+		istanbulService().togglePlannedMeal(LocalDate.of(2026, 9, 18), 55L, false, null);
+
+		verify(mealEntryRepository).findDailyLogs(1L, TR_DAY_START, TR_DAY_END);
+	}
+
+	@Test
+	void togglePlannedMeal_otherDay_newLogStartsAtTurkishMidnight() {
+		when(mealRepository.findById(55L)).thenReturn(Optional.of(plannedMealOwnedBy(currentUser)));
+
+		istanbulService().togglePlannedMeal(LocalDate.of(2026, 9, 20), 55L, true, null);
+
+		ArgumentCaptor<MealEntry> saved = ArgumentCaptor.forClass(MealEntry.class);
+		verify(mealEntryRepository).save(saved.capture());
+		assertThat(saved.getValue().getTakenDatetime()).isEqualTo(Instant.parse("2026-09-19T21:00:00Z"));
 	}
 
 }

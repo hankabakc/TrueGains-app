@@ -28,7 +28,9 @@ public interface MealEntryRepository extends JpaRepository<MealEntry, Long> {
 			@Param("type") MealType type, @Param("start") Instant start, @Param("end") Instant end);
 
 	// Adım 2.3: Performance Analytics - Native SQL Aggregations
-	@Query(value = "SELECT CAST(m.taken_datetime AT TIME ZONE 'UTC' AS DATE) as entryDate, "
+	// KR17 (G-85): gün Türkiye saatiyle; DateTimeConfig'teki app.timezone varsayılanıyla
+	// (Europe/Istanbul) aynı kalmalı.
+	@Query(value = "SELECT CAST(m.taken_datetime AT TIME ZONE 'Europe/Istanbul' AS DATE) as entryDate, "
 			+ "COALESCE(SUM(m.protein), 0), COALESCE(SUM(m.carbs), 0), COALESCE(SUM(m.fat), 0), "
 			+ "COALESCE(SUM(m.calories), 0), COALESCE(SUM(m.sugar), 0), COALESCE(SUM(m.fiber), 0), "
 			+ "COALESCE(SUM(m.sodium), 0), COALESCE(SUM(m.potassium), 0), COALESCE(SUM(m.cholesterol), 0) "
@@ -37,7 +39,7 @@ public interface MealEntryRepository extends JpaRepository<MealEntry, Long> {
 	List<Object[]> findDailyNutrientTotals(@Param("clientId") Long clientId, @Param("start") Instant start,
 			@Param("end") Instant end);
 
-	@Query(value = "SELECT CAST(m.taken_datetime AT TIME ZONE 'UTC' AS DATE) as entryDate, m.meal_type, "
+	@Query(value = "SELECT CAST(m.taken_datetime AT TIME ZONE 'Europe/Istanbul' AS DATE) as entryDate, m.meal_type, "
 			+ "COALESCE(SUM(m.calories), 0) "
 			+ "FROM meal_entry m WHERE m.client_id = :clientId AND m.taken_datetime >= :start AND m.taken_datetime < :end "
 			+ "GROUP BY entryDate, m.meal_type", nativeQuery = true)

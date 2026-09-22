@@ -20,7 +20,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.*;
-import java.time.temporal.ChronoUnit;
 import java.util.*;
 
 /**
@@ -77,10 +76,11 @@ public class NutritionAnalyticsService {
 
 			user = client.getUser();
 		}
-		Instant now = clock.instant();
-		Instant startOfDay = now.truncatedTo(ChronoUnit.DAYS);
-		Instant endOfDay = startOfDay.plus(1, ChronoUnit.DAYS);
-		Instant startOfLast7Days = startOfDay.minus(6, ChronoUnit.DAYS);
+		// KR17 (G-85): "bugün" ve son 7 gün Türkiye saatiyle (Clock bölgesi) kesilir.
+		LocalDate todayDate = LocalDate.now(clock);
+		Instant startOfDay = todayDate.atStartOfDay(clock.getZone()).toInstant();
+		Instant endOfDay = todayDate.plusDays(1).atStartOfDay(clock.getZone()).toInstant();
+		Instant startOfLast7Days = todayDate.minusDays(6).atStartOfDay(clock.getZone()).toInstant();
 
 		// Program kimliği istekten geldiği için sahibi doğrulanır; aksi hâlde başkasının
 		// kalori/makro hedefleri panoda gösterilir. Sahibi tutmayan kimlik, bilinmeyen
@@ -135,7 +135,7 @@ public class NutritionAnalyticsService {
 					(BigDecimal) obj[3], (BigDecimal) obj[4], (BigDecimal) obj[5]))
 			.toList();
 
-		LocalDate today = startOfDay.atZone(ZoneOffset.UTC).toLocalDate();
+		LocalDate today = todayDate;
 		DailySummaryResponse daily = buildDailySummary(today, dailyTotalsMap, dailyBreakdownMap, todayFoods);
 
 		WeeklySummaryResponse weekly = buildWeeklySummary(startOfLast7Days, dailyTotalsMap, dailyBreakdownMap,
@@ -186,7 +186,7 @@ public class NutritionAnalyticsService {
 		BigDecimal totalPot = BigDecimal.ZERO;
 
 		for (int i = 0; i < 7; i++) {
-			LocalDate currentDate = start.plus(i, ChronoUnit.DAYS).atZone(ZoneOffset.UTC).toLocalDate();
+			LocalDate currentDate = start.atZone(clock.getZone()).toLocalDate().plusDays(i);
 			DailySummaryResponse daySum = buildDailySummary(currentDate, totalsMap, breakdownMap,
 					Collections.emptyList());
 			dailyLogs.add(daySum);

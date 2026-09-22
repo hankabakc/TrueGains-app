@@ -14,7 +14,7 @@ import com.gym.v2.measurement.entity.Measurement;
 import com.gym.v2.measurement.repository.MeasurementRepository;
 import java.time.Clock;
 import java.time.Instant;
-import java.time.temporal.ChronoUnit;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Objects;
 import java.util.stream.Collectors;
@@ -85,8 +85,10 @@ public class MeasurementService {
 	public MeasurementDTO getTodayMeasurement() {
 		AppUser currentUser = userContextService.getCurrentUser();
 
-		Instant startOfToday = clock.instant().truncatedTo(ChronoUnit.DAYS);
-		Instant endOfToday = startOfToday.plus(1, ChronoUnit.DAYS);
+		// KR17 (G-85): "bugün" Türkiye saatiyle.
+		LocalDate today = LocalDate.now(clock);
+		Instant startOfToday = today.atStartOfDay(clock.getZone()).toInstant();
+		Instant endOfToday = today.plusDays(1).atStartOfDay(clock.getZone()).toInstant();
 
 		return measurementRepository
 			.findFirstByUser_ExternalIdAndCreatedAtBetween(currentUser.getExternalId(), startOfToday, endOfToday)

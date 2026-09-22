@@ -15,7 +15,6 @@ import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 import java.util.HashSet;
 import java.util.List;
@@ -70,8 +69,11 @@ public class MealLogService {
 		Instant takenAt = request.takenDatetime() != null ? request.takenDatetime() : clock.instant();
 
 		// Gün aralığını hesapla (UTC Standartı)
-		Instant startDay = takenAt.truncatedTo(ChronoUnit.DAYS);
-		Instant endDay = startDay.plus(1, ChronoUnit.DAYS);
+		// KR17 (G-85): gün Türkiye saatiyle (Clock bölgesi, app.timezone) kesilir; UTC'de
+		// gece 00-03 önceki güne düşüyordu.
+		LocalDate takenDay = takenAt.atZone(clock.getZone()).toLocalDate();
+		Instant startDay = takenDay.atStartOfDay(clock.getZone()).toInstant();
+		Instant endDay = takenDay.plusDays(1).atStartOfDay(clock.getZone()).toInstant();
 
 		MealEntry entry = mealEntryRepository
 			.findByClientAndMealTypeAndDateRange(user, request.mealType(), startDay, endDay)
@@ -132,8 +134,8 @@ public class MealLogService {
 	public List<MealEntryResponse> getDailyMealEntries(LocalDate date) {
 		AppUser currentUser = userContextService.getCurrentUser();
 		// LocalDate'i Instant aralığına çevir
-		Instant startOfDay = date.atStartOfDay(ZoneOffset.UTC).toInstant();
-		Instant endOfDay = startOfDay.plus(1, ChronoUnit.DAYS);
+		Instant startOfDay = date.atStartOfDay(clock.getZone()).toInstant();
+		Instant endOfDay = date.plusDays(1).atStartOfDay(clock.getZone()).toInstant();
 
 		List<MealEntry> entries = mealEntryRepository.findDailyLogs(currentUser.getId(), startOfDay, endOfDay);
 		return entries.stream().map(entry -> nutritionMapper.toMealEntryResponse(entry, currentUser.getId())).toList();

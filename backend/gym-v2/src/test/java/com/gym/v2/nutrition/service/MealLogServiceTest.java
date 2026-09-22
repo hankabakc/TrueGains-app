@@ -18,6 +18,8 @@ import com.gym.v2.nutrition.repository.RecipeRepository;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
@@ -71,6 +73,14 @@ class MealLogServiceTest {
 	private NutrientCalculator nutrientCalculator;
 
 	private static final Instant NOW = Instant.parse("2026-01-01T12:00:00Z");
+
+	/** 18.09.2026 01:30 Türkiye saati = 17.09.2026 22:30 UTC (G-85). */
+	private static final Clock ISTANBUL_AFTER_MIDNIGHT = Clock.fixed(Instant.parse("2026-09-17T22:30:00Z"),
+			ZoneId.of("Europe/Istanbul"));
+
+	private static final Instant TR_DAY_START = Instant.parse("2026-09-17T21:00:00Z");
+
+	private static final Instant TR_DAY_END = Instant.parse("2026-09-18T21:00:00Z");
 
 	private MealLogService service;
 
@@ -273,6 +283,29 @@ class MealLogServiceTest {
 
 		verify(mealEntryRepository, never()).delete(any());
 		assertThat(own.getItems()).containsExactly(second);
+	}
+
+	@Test
+	void logMealEntry_afterTurkishMidnight_usesTurkishDay() {
+		MealLogService istanbul = new MealLogService(mealEntryRepository, mealItemRepository, foodRepository,
+				recipeRepository, userContextService, nutritionMapper, nutrientCalculator, ISTANBUL_AFTER_MIDNIGHT);
+		when(mealEntryRepository.findByClientAndMealTypeAndDateRange(any(), any(), any(), any()))
+			.thenReturn(Optional.empty());
+
+		istanbul.logMealEntry(new LogMealRequest(MealType.KAHVALTI, null, List.of()));
+
+		verify(mealEntryRepository).findByClientAndMealTypeAndDateRange(currentUser, MealType.KAHVALTI, TR_DAY_START,
+				TR_DAY_END);
+	}
+
+	@Test
+	void getDailyMealEntries_usesTurkishDayBounds() {
+		MealLogService istanbul = new MealLogService(mealEntryRepository, mealItemRepository, foodRepository,
+				recipeRepository, userContextService, nutritionMapper, nutrientCalculator, ISTANBUL_AFTER_MIDNIGHT);
+
+		istanbul.getDailyMealEntries(LocalDate.of(2026, 9, 18));
+
+		verify(mealEntryRepository).findDailyLogs(1L, TR_DAY_START, TR_DAY_END);
 	}
 
 }

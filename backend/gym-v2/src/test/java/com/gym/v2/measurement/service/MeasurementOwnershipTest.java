@@ -12,6 +12,7 @@ import com.gym.v2.measurement.entity.Measurement;
 import com.gym.v2.measurement.repository.MeasurementRepository;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
@@ -60,6 +61,14 @@ class MeasurementOwnershipTest {
 
 	@Mock
 	private EncryptionConverter encryptionConverter;
+
+	/** 18.09.2026 01:30 Türkiye saati = 17.09.2026 22:30 UTC (G-85). */
+	private static final Clock ISTANBUL_AFTER_MIDNIGHT = Clock.fixed(Instant.parse("2026-09-17T22:30:00Z"),
+			ZoneId.of("Europe/Istanbul"));
+
+	private static final Instant TR_DAY_START = Instant.parse("2026-09-17T21:00:00Z");
+
+	private static final Instant TR_DAY_END = Instant.parse("2026-09-18T21:00:00Z");
 
 	private MeasurementService service;
 
@@ -297,6 +306,18 @@ class MeasurementOwnershipTest {
 		when(clientRepository.findByUserId(404L)).thenReturn(Optional.empty());
 
 		assertThatThrownBy(() -> service.getClientMeasurements(404L, pageable)).isInstanceOf(NotFoundException.class);
+	}
+
+	@Test
+	void getTodayMeasurement_afterTurkishMidnight_usesTurkishDay() {
+		MeasurementService istanbul = new MeasurementService(measurementRepository, userContextService,
+				measurementMapper, clientRepository, encryptionConverter, ISTANBUL_AFTER_MIDNIGHT);
+		when(userContextService.getCurrentUser()).thenReturn(owner);
+
+		istanbul.getTodayMeasurement();
+
+		verify(measurementRepository).findFirstByUser_ExternalIdAndCreatedAtBetween(owner.getExternalId(), TR_DAY_START,
+				TR_DAY_END);
 	}
 
 }

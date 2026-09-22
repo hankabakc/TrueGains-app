@@ -13,7 +13,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -54,8 +53,8 @@ public class DietEntryService {
 	@Transactional(readOnly = true)
 	public DailyDietLogResponse getDailyLog(LocalDate date) {
 		AppUser user = userContextService.getCurrentUser();
-		Instant start = date.atStartOfDay(ZoneOffset.UTC).toInstant();
-		Instant end = start.plus(1, java.time.temporal.ChronoUnit.DAYS);
+		Instant start = date.atStartOfDay(clock.getZone()).toInstant();
+		Instant end = date.plusDays(1).atStartOfDay(clock.getZone()).toInstant();
 
 		List<MealEntry> logs = mealEntryRepository.findDailyLogs(user.getId(), start, end);
 		DietProgram program = dietProgramRepository.findByOwnerIdAndMainTrue(user.getId()).orElse(null);
@@ -127,8 +126,8 @@ public class DietEntryService {
 			java.util.List<Long> ingredientIds) {
 		AppUser user = userContextService.getCurrentUser();
 
-		Instant start = date.atStartOfDay(ZoneOffset.UTC).toInstant();
-		Instant end = start.plus(1, java.time.temporal.ChronoUnit.DAYS);
+		Instant start = date.atStartOfDay(clock.getZone()).toInstant();
+		Instant end = date.plusDays(1).atStartOfDay(clock.getZone()).toInstant();
 
 		List<MealEntry> existingLogs = mealEntryRepository.findDailyLogs(user.getId(), start, end)
 			.stream()
@@ -183,7 +182,7 @@ public class DietEntryService {
 
 	private MealEntry createMealEntryFromPlanned(Meal plannedMeal, AppUser user, List<Long> ingredientIds,
 			LocalDate date) {
-		Instant takenTime = date.atStartOfDay(ZoneOffset.UTC).toInstant();
+		Instant takenTime = date.atStartOfDay(clock.getZone()).toInstant();
 		// Eğer bugün için işlem yapılıyorsa anlık saati kullan, geçmiş/gelecek ise gün
 		// başlangıcını ata
 		if (date.equals(LocalDate.now(clock))) {
