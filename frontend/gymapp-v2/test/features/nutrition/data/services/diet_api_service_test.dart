@@ -49,4 +49,44 @@ void main() {
     expect(queryStr.contains('ingredientIds=789'), isTrue);
     expect(queryStr.contains('ingredientIds%5B%5D'), isFalse);
   });
+
+  // G-83: kalem sunucuda zaten silinmişse silme başarılıdır; başka bir ret başarı sayılmaz.
+  Dio rejectingDio(int status, String message, void Function(RequestOptions options) onPath) {
+    final dio = Dio(BaseOptions(baseUrl: 'http://localhost/api/v1'));
+    dio.interceptors.add(InterceptorsWrapper(
+      onRequest: (options, handler) {
+        onPath(options);
+        handler.reject(DioException(
+          requestOptions: options,
+          type: DioExceptionType.badResponse,
+          response: Response<Map<String, dynamic>>(
+            requestOptions: options,
+            statusCode: status,
+            data: <String, dynamic>{'success': false, 'message': message},
+          ),
+        ));
+      },
+    ));
+    return dio;
+  }
+
+  test('silinecek kalem sunucuda yoksa (404) silme başarılı sayılır', () async {
+    RequestOptions? captured;
+    final dio = rejectingDio(404, 'Öğün öğesi bulunamadı: 7', (options) => captured = options);
+
+    final result = await DietApiService(FakeDioClient(dio)).deleteMealItem(7);
+
+    expect(captured!.method, 'DELETE');
+    expect(captured!.path, '/nutrition/meal-logs/items/7');
+    expect(result.success, isTrue);
+  });
+
+  test('başkasının kalemini silme (400) başarı sayılmaz', () async {
+    final dio = rejectingDio(400, 'Bu kayıt size ait değil!', (_) {});
+
+    final result = await DietApiService(FakeDioClient(dio)).deleteMealItem(7);
+
+    expect(result.success, isFalse);
+    expect(result.message, 'Bu kayıt size ait değil!');
+  });
 }

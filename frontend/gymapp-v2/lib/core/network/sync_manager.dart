@@ -27,6 +27,25 @@ class RejectedRecord extends Equatable {
   List<Object?> get props => [key, endpoint, reason, createdAt, localId];
 }
 
+/// Gönderilmeyi bekleyen (reddedilmemiş) kuyruk kaydı (G-83); günlük ekranı bekleyen öğünü ve silmeyi buradan okur.
+class PendingRecord {
+  final String key;
+  final String endpoint;
+  final String method;
+  final Map<String, dynamic> payload;
+
+  /// Yalnızca cihazdaki gösterim için (ad, besin değerleri); sunucuya gönderilmez.
+  final List<Map<String, dynamic>> preview;
+
+  const PendingRecord({
+    required this.key,
+    required this.endpoint,
+    required this.method,
+    required this.payload,
+    this.preview = const <Map<String, dynamic>>[],
+  });
+}
+
 /// Çevrimdışı yazma kuyruğu: bağlantı yokken yapılan istekleri saklar, bağlantı gelince gönderir.
 ///
 /// Kayıt kime aitse yalnızca o kullanıcının oturumunda gönderilir; başkasının kaydına
@@ -41,6 +60,9 @@ class SyncManager {
   /// Kalıcı ret sayılan durum kodları: aynı istek her denemede aynı cevabı alır. Geri kalan her şey
   /// (bağlantı yok, zaman aşımı, 401, 408, 429, 5xx) geçicidir; kayıt bekler, kendiliğinden yeniden denenir.
   static const Set<int> permanentStatusCodes = {400, 403, 404, 409, 422};
+
+  static const String methodPost = 'POST';
+  static const String methodDelete = 'DELETE';
 
   static const String _statusRejected = 'rejected';
   static const String _defaultReason = 'Sunucu bu kaydı kabul etmedi.';
@@ -88,12 +110,20 @@ class SyncManager {
   }
 
   /// Çevrimdışı veriyi kuyruğa ekler; kayıt o an oturum açmış kullanıcıya ait işaretlenir.
-  Future<void> addToQueue(String endpoint, Map<String, dynamic> payload) async {
+  /// [preview] yalnızca cihazda gösterilir, gönderilmez (G-83).
+  Future<void> addToQueue(
+    String endpoint,
+    Map<String, dynamic> payload, {
+    String method = methodPost,
+    List<Map<String, dynamic>> preview = const <Map<String, dynamic>>[],
+  }) async {
     final String id = const Uuid().v4();
     final Map<String, dynamic> queueItem = {
       'id': id,
       'endpoint': endpoint,
+      'method': method,
       'payload': payload,
+      if (preview.isNotEmpty) 'preview': preview,
       'timestamp': DateTime.now().toIso8601String(),
       'ownerId': currentUserId(),
     };
@@ -136,13 +166,18 @@ class SyncManager {
           final String endpoint = item['endpoint'] as String;
           final Map<String, dynamic> payload = item['payload'] as Map<String, dynamic>;
 
-          final response = await dioClient.dio.post<Map<String, dynamic>>(endpoint, data: payload);
+          final response = _methodOf(item) == methodDelete
+              ? await dioClient.dio.delete<Map<String, dynamic>>(endpoint)
+              : await dioClient.dio.post<Map<String, dynamic>>(endpoint, data: payload);
 
-          if (response.statusCode == 200 || response.statusCode == 201) {
+          if (response.statusCode == 200 || response.statusCode == 201 || response.statusCode == 204) {
             await syncBox.delete(key);
           }
         } on DioException catch (e) {
-          if (item != null && isPermanentRejection(e)) {
+          // G-83: silinecek kayıt sunucuda zaten yoksa silme amacına ulaşmıştır; ret değil.
+          if (item != null && _methodOf(item) == methodDelete && e.response?.statusCode == 404) {
+            await syncBox.delete(key);
+          } else if (item != null && isPermanentRejection(e)) {
             item['status'] = _statusRejected;
             item['reason'] = _reasonOf(e);
             await syncBox.put(key, jsonEncode(item));
@@ -158,33 +193,83 @@ class SyncManager {
     }
   }
 
-  /// Oturumdaki kullanıcının reddedilen kayıtları, eskiden yeniye.
-  List<RejectedRecord> rejectedRecords() {
-    final int? owner = currentUserId();
-    if (owner == null) return const <RejectedRecord>[];
+  /// Kayıt yöntemi; G-83 öncesi kayıtlarda alan yok, hepsi POST'tu.
+  static String _methodOf(Map<String, dynamic> item) => (item['method'] as String?) ?? methodPost;
 
-    final List<RejectedRecord> records = <RejectedRecord>[];
+  /// Oturumdaki kullanıcının okunabilen kuyruk kayıtları (anahtar → kayıt).
+  List<MapEntry<String, Map<String, dynamic>>> _ownItems() {
+    final int? owner = currentUserId();
+    if (owner == null) return const <MapEntry<String, Map<String, dynamic>>>[];
+
+    final List<MapEntry<String, Map<String, dynamic>>> items = <MapEntry<String, Map<String, dynamic>>>[];
     for (final dynamic key in syncBox.keys) {
       final String? raw = syncBox.get(key);
       if (raw == null) continue;
       try {
         final Map<String, dynamic> item = jsonDecode(raw) as Map<String, dynamic>;
-        if (item['status'] != _statusRejected) continue;
         final Object? itemOwner = item['ownerId'];
         if (itemOwner != null && itemOwner != owner) continue;
-        records.add(RejectedRecord(
-          key: key as String,
-          endpoint: item['endpoint'] as String,
-          reason: (item['reason'] as String?) ?? _defaultReason,
-          createdAt: DateTime.tryParse((item['timestamp'] as String?) ?? ''),
-          localId: (item['payload'] as Map<String, dynamic>?)?['localId'] as String?,
-        ));
+        items.add(MapEntry<String, Map<String, dynamic>>(key as String, item));
       } on FormatException {
         continue;
       }
     }
+    return items;
+  }
+
+  /// Oturumdaki kullanıcının reddedilen kayıtları, eskiden yeniye.
+  List<RejectedRecord> rejectedRecords() {
+    final List<RejectedRecord> records = <RejectedRecord>[
+      for (final MapEntry<String, Map<String, dynamic>> e in _ownItems())
+        if (e.value['status'] == _statusRejected)
+          RejectedRecord(
+            key: e.key,
+            endpoint: e.value['endpoint'] as String,
+            reason: (e.value['reason'] as String?) ?? _defaultReason,
+            createdAt: DateTime.tryParse((e.value['timestamp'] as String?) ?? ''),
+            localId: (e.value['payload'] as Map<String, dynamic>?)?['localId'] as String?,
+          ),
+    ];
     records.sort((a, b) => (a.createdAt ?? DateTime(0)).compareTo(b.createdAt ?? DateTime(0)));
     return records;
+  }
+
+  /// Oturumdaki kullanıcının gönderilmeyi bekleyen kayıtları; reddedilenler hariç (G-83).
+  List<PendingRecord> pendingRecords() {
+    return <PendingRecord>[
+      for (final MapEntry<String, Map<String, dynamic>> e in _ownItems())
+        if (e.value['status'] != _statusRejected)
+          PendingRecord(
+            key: e.key,
+            endpoint: e.value['endpoint'] as String,
+            method: _methodOf(e.value),
+            payload: e.value['payload'] as Map<String, dynamic>,
+            preview: <Map<String, dynamic>>[
+              for (final dynamic p in (e.value['preview'] as List<dynamic>?) ?? const <dynamic>[])
+                p as Map<String, dynamic>,
+            ],
+          ),
+    ];
+  }
+
+  /// Kullanıcı onayıyla, gönderilmemiş kayıttaki tek kalemi çıkarır; kalem kalmazsa kayıt silinir (G-83).
+  // ponytail: gönderim sürerken çıkarılan kalem o turda sunucuya gitmiş olabilir; günlük yeniden yüklenince
+  // sunucudaki hâli görünür ve oradan silinir. Veri kaybı yok.
+  Future<void> removeQueuedItem(String key, String localId) async {
+    final String? raw = syncBox.get(key);
+    if (raw == null) return;
+    final Map<String, dynamic> item = jsonDecode(raw) as Map<String, dynamic>;
+    final Map<String, dynamic> payload = item['payload'] as Map<String, dynamic>;
+    bool keep(dynamic e) => (e as Map<String, dynamic>)['localId'] != localId;
+
+    final List<dynamic> items = ((payload['items'] as List<dynamic>?) ?? const <dynamic>[]).where(keep).toList();
+    if (items.isEmpty) {
+      await syncBox.delete(key);
+    } else {
+      payload['items'] = items;
+      item['preview'] = ((item['preview'] as List<dynamic>?) ?? const <dynamic>[]).where(keep).toList();
+      await syncBox.put(key, jsonEncode(item));
+    }
   }
 
   void refreshRejectedCount() {

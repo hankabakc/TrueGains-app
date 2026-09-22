@@ -9,6 +9,7 @@ import 'base_nutrition_service.dart';
 
 class DietApiService extends BaseNutritionService {
   static const String mealLogPath = '/nutrition/meal-logs/log';
+  static const String mealItemsPath = '/nutrition/meal-logs/items';
 
   DietApiService(super.dioClient);
 
@@ -465,12 +466,16 @@ class DietApiService extends BaseNutritionService {
 
   Future<ApiResponse<void>> deleteMealItem(int itemId) async {
     try {
-      final response = await dioClient.dio.delete<Map<String, dynamic>>('/nutrition/meal-logs/items/$itemId');
+      final response = await dioClient.dio.delete<Map<String, dynamic>>('$mealItemsPath/$itemId');
       if (response.statusCode == 204 || response.data == null) {
         return ApiResponse(success: true, message: 'Silindi', timestamp: '');
       }
       return ApiResponse.fromJson(response.data ?? <String, dynamic>{}, (_) {});
     } on DioException catch (e) {
+      // G-83: kalem sunucuda zaten yoksa (başka cihazdan ya da kuyruktan silinmiş) silme amacına ulaşmıştır.
+      if (e.response?.statusCode == 404) {
+        return ApiResponse(success: true, message: 'Silindi', timestamp: '');
+      }
       return handleError(e);
     } catch (e) {
       return ApiResponse.error(friendlyError(e));

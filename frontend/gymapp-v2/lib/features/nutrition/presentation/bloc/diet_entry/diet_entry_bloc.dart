@@ -1,5 +1,6 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:gymapp_v2/core/config/app_config.dart';
+import 'package:gymapp_v2/features/nutrition/data/models/meal_entry_model.dart';
 import 'package:gymapp_v2/features/nutrition/data/repositories/nutrition_repository.dart';
 import 'diet_entry_event.dart';
 import 'diet_entry_state.dart';
@@ -178,7 +179,14 @@ class DietEntryBloc extends Bloc<DietEntryEvent, DietEntryState> {
   }
 
   Future<void> _onDeleteExtraItem(DeleteExtraItem event, Emitter<DietEntryState> emit) async {
-    final res = await _repository.deleteMealItem(event.itemId);
+    final MealItemModel item = event.item;
+    if (item.isPending) {
+      // G-83: sunucuya hiç gitmemiş kalem yalnızca kuyruktan çıkar.
+      await _repository.discardPendingMealItem(item.queueKey!, item.localId ?? '');
+      add(LoadDailyLog(state.selectedDate));
+      return;
+    }
+    final res = await _repository.deleteMealItem(item.id);
     if (res.success) {
       add(LoadDailyLog(state.selectedDate));
     } else {

@@ -17,6 +17,10 @@ class MealItemModel extends Equatable {
   final double cholesterol;
   final double potassium;
 
+  /// Kuyrukta bekleyen (sunucuya henüz gitmemiş) kalemin cihaz kimliği ve kuyruk kaydı (G-83); sunucudaki kalemde null.
+  final String? localId;
+  final String? queueKey;
+
   const MealItemModel({
     required this.id,
     required this.foodId,
@@ -32,7 +36,11 @@ class MealItemModel extends Equatable {
     this.sodium = 0,
     this.cholesterol = 0,
     this.potassium = 0,
+    this.localId,
+    this.queueKey,
   });
+
+  bool get isPending => queueKey != null;
 
   factory MealItemModel.fromJson(Map<String, dynamic> json) {
     return MealItemModel(
@@ -68,6 +76,8 @@ class MealItemModel extends Equatable {
     double? sodium,
     double? cholesterol,
     double? potassium,
+    String? localId,
+    String? queueKey,
   }) {
     return MealItemModel(
       id: id ?? this.id,
@@ -84,11 +94,13 @@ class MealItemModel extends Equatable {
       sodium: sodium ?? this.sodium,
       cholesterol: cholesterol ?? this.cholesterol,
       potassium: potassium ?? this.potassium,
+      localId: localId ?? this.localId,
+      queueKey: queueKey ?? this.queueKey,
     );
   }
 
   @override
-  List<Object?> get props => [id, foodId, foodName, amount, calories];
+  List<Object?> get props => [id, foodId, foodName, amount, calories, localId, queueKey];
 }
 
 class MealEntryModel extends Equatable {

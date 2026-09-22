@@ -6,6 +6,7 @@ import 'package:gymapp_v2/core/theme/app_colors.dart';
 import 'package:gymapp_v2/core/theme/app_dimens.dart';
 import 'package:gymapp_v2/core/theme/app_text_styles.dart';
 import 'package:gymapp_v2/core/widgets/empty_state.dart';
+import 'package:gymapp_v2/features/nutrition/data/services/diet_api_service.dart';
 import 'package:gymapp_v2/features/sync/presentation/unsynced_records_cubit.dart';
 import 'package:gymapp_v2/features/training/data/services/training_api_service.dart';
 
@@ -13,6 +14,8 @@ import 'package:gymapp_v2/features/training/data/services/training_api_service.d
 String unsyncedRecordLabel(String endpoint) {
   if (endpoint == TrainingApiService.sessionsPath) return 'Antrenman kaydı';
   if (endpoint == '/social/chat/send') return 'Mesaj';
+  if (endpoint == DietApiService.mealLogPath) return 'Öğün kaydı';
+  if (endpoint.startsWith('${DietApiService.mealItemsPath}/')) return 'Besin silme';
   return 'Kayıt';
 }
 

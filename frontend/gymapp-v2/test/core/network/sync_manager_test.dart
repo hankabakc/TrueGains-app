@@ -469,5 +469,150 @@ void main() {
 
     expect(manager.rejectedRecords().single.localId, equals('L1'));
   });
+
+  // --- G-83: internetsiz silme ve bekleyen kayıtların gösterimi ---
+
+  SyncManager managerFor(Box<String> box, {int? Function()? user}) => SyncManager(
+        networkInfo: networkInfo,
+        dioClient: dioClient,
+        syncBox: box,
+        currentUserId: user ?? () => 1,
+      );
+
+  test('silme kaydı DELETE ile gider, POST edilmez, başarıda kuyruktan çıkar', () async {
+    when(() => dio.delete<Map<String, dynamic>>(any())).thenAnswer(
+      (inv) async => Response<Map<String, dynamic>>(
+        requestOptions: RequestOptions(path: inv.positionalArguments.first as String),
+        statusCode: 200,
+      ),
+    );
+    final box = await Hive.openBox<String>(SyncManager.boxName);
+    final manager = managerFor(box);
+
+    await manager.addToQueue('/nutrition/meal-logs/items/7', <String, dynamic>{}, method: SyncManager.methodDelete);
+    await manager.syncPendingData();
+
+    verify(() => dio.delete<Map<String, dynamic>>('/nutrition/meal-logs/items/7')).called(1);
+    verifyNever(() => dio.post<Map<String, dynamic>>(any(), data: any(named: 'data')));
+    expect(box.isEmpty, isTrue);
+  });
+
+  test('silinecek kayıt sunucuda zaten yoksa (404) silme başarılı sayılır, ret listesine girmez', () async {
+    when(() => dio.delete<Map<String, dynamic>>(any())).thenThrow(
+      httpError('/nutrition/meal-logs/items/7', 404, message: 'Öğün öğesi bulunamadı: 7'),
+    );
+    final box = await Hive.openBox<String>(SyncManager.boxName);
+    final manager = managerFor(box);
+
+    await manager.addToQueue('/nutrition/meal-logs/items/7', <String, dynamic>{}, method: SyncManager.methodDelete);
+    await manager.syncPendingData();
+
+    expect(box.isEmpty, isTrue);
+    expect(manager.rejectedCount.value, equals(0));
+  });
+
+  test('başkasının kalemini silme (400) aktarılamadı olarak kalır', () async {
+    when(() => dio.delete<Map<String, dynamic>>(any())).thenThrow(
+      httpError('/nutrition/meal-logs/items/7', 400, message: 'Bu kayıt size ait değil!'),
+    );
+    final box = await Hive.openBox<String>(SyncManager.boxName);
+    final manager = managerFor(box);
+
+    await manager.addToQueue('/nutrition/meal-logs/items/7', <String, dynamic>{}, method: SyncManager.methodDelete);
+    await manager.syncPendingData();
+
+    final item = jsonDecode(box.values.single) as Map<String, dynamic>;
+    expect(item['status'], equals('rejected'));
+    expect(manager.rejectedCount.value, equals(1));
+  });
+
+  test('önizleme cihazda kalır, sunucuya yalnızca yük gider', () async {
+    final box = await Hive.openBox<String>(SyncManager.boxName);
+    final manager = managerFor(box);
+
+    await manager.addToQueue(
+      '/kayit',
+      <String, dynamic>{'a': 1},
+      preview: <Map<String, dynamic>>[
+        <String, dynamic>{'foodName': 'Yulaf', 'localId': 'L1'},
+      ],
+    );
+
+    expect(manager.pendingRecords().single.preview.single['foodName'], equals('Yulaf'));
+
+    await manager.syncPendingData();
+
+    verify(() => dio.post<Map<String, dynamic>>('/kayit', data: <String, dynamic>{'a': 1})).called(1);
+    expect(box.isEmpty, isTrue);
+  });
+
+  test('bekleyen kayıtlar yalnızca oturumdaki kullanıcının reddedilmemiş kayıtlarıdır', () async {
+    final box = await Hive.openBox<String>(SyncManager.boxName);
+    final manager = managerFor(box);
+
+    await box.put('w1', jsonEncode(<String, dynamic>{
+      'id': 'w1',
+      'endpoint': '/nutrition/meal-logs/items/7',
+      'method': 'DELETE',
+      'payload': <String, dynamic>{},
+      'timestamp': '2026-09-18T08:00:00Z',
+      'ownerId': 1,
+    }));
+    await box.put('r1', jsonEncode(<String, dynamic>{
+      'id': 'r1',
+      'endpoint': '/r1',
+      'payload': <String, dynamic>{},
+      'timestamp': '2026-09-18T08:00:00Z',
+      'ownerId': 1,
+      'status': 'rejected',
+      'reason': 'x',
+    }));
+    await box.put('o1', jsonEncode(<String, dynamic>{
+      'id': 'o1',
+      'endpoint': '/o1',
+      'payload': <String, dynamic>{},
+      'timestamp': '2026-09-18T08:00:00Z',
+      'ownerId': 2,
+    }));
+
+    final List<PendingRecord> pending = manager.pendingRecords();
+
+    expect(pending.map((PendingRecord r) => r.key).toList(), equals(<String>['w1']));
+    expect(pending.single.method, equals(SyncManager.methodDelete));
+  });
+
+  test('bekleyen kayıttan tek kalem çıkar, son kalem çıkınca kayıt silinir, diğer kayıt kalır', () async {
+    final box = await Hive.openBox<String>(SyncManager.boxName);
+    final manager = managerFor(box);
+
+    await manager.addToQueue(
+      '/nutrition/meal-logs/log',
+      <String, dynamic>{
+        'mealType': 'KAHVALTI',
+        'items': <Map<String, dynamic>>[
+          <String, dynamic>{'foodId': 5, 'localId': 'L1'},
+          <String, dynamic>{'foodId': 6, 'localId': 'L2'},
+        ],
+      },
+      preview: <Map<String, dynamic>>[
+        <String, dynamic>{'foodName': 'Yulaf', 'localId': 'L1'},
+        <String, dynamic>{'foodName': 'Süt', 'localId': 'L2'},
+      ],
+    );
+    await manager.addToQueue('/baska', <String, dynamic>{});
+    final String mealKey = manager.pendingRecords().firstWhere((PendingRecord r) => r.endpoint != '/baska').key;
+
+    await manager.removeQueuedItem(mealKey, 'L1');
+
+    final Map<String, dynamic> meal = jsonDecode(box.get(mealKey)!) as Map<String, dynamic>;
+    final List<dynamic> items = (meal['payload'] as Map<String, dynamic>)['items'] as List<dynamic>;
+    expect(items.map((dynamic e) => (e as Map<String, dynamic>)['localId']).toList(), equals(<String>['L2']));
+    expect(((meal['preview'] as List<dynamic>).single as Map<String, dynamic>)['foodName'], equals('Süt'));
+
+    await manager.removeQueuedItem(mealKey, 'L2');
+
+    expect(box.containsKey(mealKey), isFalse);
+    expect(box.length, equals(1));
+  });
 }
 

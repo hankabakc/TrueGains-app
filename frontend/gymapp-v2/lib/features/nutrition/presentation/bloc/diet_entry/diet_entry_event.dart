@@ -1,5 +1,6 @@
 import 'package:equatable/equatable.dart';
 import 'package:gymapp_v2/features/nutrition/data/models/diet_entry_model.dart';
+import 'package:gymapp_v2/features/nutrition/data/models/meal_entry_model.dart';
 
 abstract class DietEntryEvent extends Equatable {
   const DietEntryEvent();
@@ -36,11 +37,12 @@ class ToggleAllMeal extends DietEntryEvent {
   List<Object?> get props => [meal];
 }
 
+/// Günlükteki ekstra besinin silinmesi; kalem kuyrukta bekliyorsa oradan çıkarılır (G-83).
 class DeleteExtraItem extends DietEntryEvent {
-  final int itemId;
-  const DeleteExtraItem(this.itemId);
+  final MealItemModel item;
+  const DeleteExtraItem(this.item);
   @override
-  List<Object?> get props => [itemId];
+  List<Object?> get props => [item];
 }
 
 class InitializeDietEntry extends DietEntryEvent {

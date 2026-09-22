@@ -26,6 +26,9 @@ import '../services/food_api_service.dart';
 import '../services/analytics_api_service.dart';
 
 class NutritionRepository {
+  /// Öğün kaydı isteğinin kalem alanları (`LogMealItemRequest`); kalanı yalnızca cihazda gösterilir (G-83).
+  static const Set<String> _serverItemKeys = <String>{'foodId', 'recipeId', 'amount', 'note', 'localId'};
+
   final DietApiService _dietService;
   final WaterApiService _waterService;
   final FoodApiService _foodService;
@@ -55,7 +58,68 @@ class NutritionRepository {
 
   Future<ApiResponse<DailyDietLogModel>> getDailyDietLog(DateTime date) async {
     final dateStr = date.toIso8601String().split('T')[0];
-    return _dietService.getDailyDietLog(dateStr);
+    final ApiResponse<DailyDietLogModel> res = await _dietService.getDailyDietLog(dateStr);
+    if (!res.success || res.data == null) return res;
+    return ApiResponse<DailyDietLogModel>(
+      success: true,
+      message: res.message,
+      timestamp: res.timestamp,
+      data: _withQueued(res.data!, date),
+    );
+  }
+
+  /// Kuyruğu güne yansıtır (KR13, G-83): o güne ait bekleyen öğün ekstra giriş olarak eklenir, silinmeyi
+  /// bekleyen kalem gizlenir. Günlük toplam cihazda bu listeden hesaplanır.
+  // ponytail: gönderim bittiği an ekran kendiliğinden tazelenmez; bir sonraki yüklemede bekleyen işareti kalkar.
+  DailyDietLogModel _withQueued(DailyDietLogModel log, DateTime date) {
+    final List<PendingRecord> queued = _syncManager.pendingRecords();
+    const String deletePrefix = '${DietApiService.mealItemsPath}/';
+    final Set<int> deletedIds = <int>{
+      for (final PendingRecord r in queued)
+        if (r.method == SyncManager.methodDelete && r.endpoint.startsWith(deletePrefix))
+          int.tryParse(r.endpoint.substring(deletePrefix.length)) ?? -1,
+    };
+
+    final List<MealEntryModel> entries = <MealEntryModel>[];
+    for (final MealEntryModel entry in log.extraEntries) {
+      if (!entry.items.any((MealItemModel i) => deletedIds.contains(i.id))) {
+        entries.add(entry);
+        continue;
+      }
+      final List<MealItemModel> kept = entry.items.where((MealItemModel i) => !deletedIds.contains(i.id)).toList();
+      // Toplamlar verilmez: MealEntryModel kalan kalemlerden toplar; sunucunun eski toplamı silineni içeriyor.
+      if (kept.isNotEmpty) {
+        entries.add(MealEntryModel(
+          id: entry.id,
+          clientId: entry.clientId,
+          takenDatetime: entry.takenDatetime,
+          mealType: entry.mealType,
+          items: kept,
+        ));
+      }
+    }
+
+    for (final PendingRecord r in queued) {
+      if (r.endpoint != DietApiService.mealLogPath) continue;
+      final DateTime? taken = DateTime.tryParse((r.payload['takenDatetime'] as String?) ?? '')?.toLocal();
+      if (taken == null || taken.year != date.year || taken.month != date.month || taken.day != date.day) continue;
+      // G-83 öncesi kuyruğa girmiş öğünde önizleme yok; kalemler ad ve değer olmadan gösterilir.
+      final List<dynamic> source =
+          r.preview.isNotEmpty ? r.preview : (r.payload['items'] as List<dynamic>?) ?? const <dynamic>[];
+      entries.add(MealEntryModel(
+        id: 0,
+        clientId: 0,
+        takenDatetime: taken,
+        mealType: MealTypeExtension.fromString((r.payload['mealType'] as String?) ?? ''),
+        items: <MealItemModel>[
+          for (final dynamic p in source)
+            MealItemModel.fromJson(p as Map<String, dynamic>)
+                .copyWith(localId: p['localId'] as String?, queueKey: r.key),
+        ],
+      ));
+    }
+
+    return DailyDietLogModel(plannedMeals: log.plannedMeals, extraEntries: entries);
   }
 
   Future<ApiResponse<MealEntryModel>> togglePlannedMeal({
@@ -68,8 +132,27 @@ class NutritionRepository {
     return _dietService.togglePlannedMeal(dateStr, mealId, consumed, ingredientIds: ingredientIds);
   }
 
-  Future<ApiResponse<void>> deleteMealItem(int itemId) {
-    return _dietService.deleteMealItem(itemId);
+  Future<ApiResponse<void>> deleteMealItem(int itemId) async {
+    if (await _networkInfo.isConnected) {
+      return _dietService.deleteMealItem(itemId);
+    }
+
+    // KR13 (G-83): bağlantı yoksa silme kuyruğa girer; günlük kalemi hemen gizler.
+    await _syncManager.addToQueue(
+      '${DietApiService.mealItemsPath}/$itemId',
+      <String, dynamic>{},
+      method: SyncManager.methodDelete,
+    );
+    return ApiResponse<void>(
+      success: true,
+      message: 'Bağlantı yok. Silme internet geldiğinde sunucuya iletilecek.',
+      timestamp: DateTime.now().toIso8601String(),
+    );
+  }
+
+  /// Sunucuya henüz gitmemiş öğün kalemini kuyruktan çıkarır; kullanıcı onayıyla çağrılır (G-83).
+  Future<void> discardPendingMealItem(String queueKey, String localId) {
+    return _syncManager.removeQueuedItem(queueKey, localId);
   }
 
   Future<ApiResponse<void>> deleteMealEntry(int entryId) {
@@ -232,17 +315,29 @@ class NutritionRepository {
     final List<Map<String, dynamic>> itemsWithId = items
         .map((Map<String, dynamic> item) => <String, dynamic>{...item, 'localId': const Uuid().v4()})
         .toList();
+    // G-83: sunucuya yalnızca istek alanları gider; ad ve besin değerleri bekleyen öğünün gösterimi içindir.
+    final List<Map<String, dynamic>> serverItems = <Map<String, dynamic>>[
+      for (final Map<String, dynamic> item in itemsWithId)
+        <String, dynamic>{
+          for (final MapEntry<String, dynamic> e in item.entries)
+            if (_serverItemKeys.contains(e.key)) e.key: e.value,
+        },
+    ];
 
     if (await _networkInfo.isConnected) {
-      return _dietService.logMeal(mealTypeStr: mealType.toBackendString(), items: itemsWithId, date: date);
+      return _dietService.logMeal(mealTypeStr: mealType.toBackendString(), items: serverItems, date: date);
     }
 
     // KR13 (G-72): bağlantı yoksa öğün kuyruğa alınır. Gün, eklendiği anın günüdür; gönderim anının değil.
-    await _syncManager.addToQueue(DietApiService.mealLogPath, <String, dynamic>{
-      'mealType': mealType.toBackendString(),
-      'items': itemsWithId,
-      'takenDatetime': (date ?? DateTime.now()).toUtc().toIso8601String(),
-    });
+    await _syncManager.addToQueue(
+      DietApiService.mealLogPath,
+      <String, dynamic>{
+        'mealType': mealType.toBackendString(),
+        'items': serverItems,
+        'takenDatetime': (date ?? DateTime.now()).toUtc().toIso8601String(),
+      },
+      preview: itemsWithId,
+    );
     return ApiResponse<MealEntryModel>(
       success: true,
       message: 'Bağlantı yok. Öğün internet geldiğinde kaydedilecek.',

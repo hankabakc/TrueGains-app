@@ -141,11 +141,26 @@ class FoodSearchCubit extends Cubit<FoodSearchState> {
 
     ApiResponse<dynamic> res;
     if (mealType != null) {
-      final items = state.basket.map((item) => {
-        'foodId': item.foodId,
-        'recipeId': item.recipeId,
-        'amount': item.amount,
-        'note': item.note,
+      final items = state.basket.map((item) {
+        // G-83: ad ve miktara göre besin değerleri (sepetteki formül) internetsizken bekleyen öğünü gösterir;
+        // sunucuya gitmez, depo ayırır.
+        final double factor = item.amount / (item.defaultAmount > 0 ? item.defaultAmount : 100);
+        return <String, dynamic>{
+          'foodId': item.foodId,
+          'recipeId': item.recipeId,
+          'amount': item.amount,
+          'note': item.note,
+          'foodName': item.foodName,
+          'calories': item.calories * factor,
+          'protein': item.protein * factor,
+          'carbs': item.carbs * factor,
+          'fat': item.fat * factor,
+          'sugar': item.sugar * factor,
+          'fiber': item.fiber * factor,
+          'sodium': item.sodium * factor,
+          'cholesterol': item.cholesterol * factor,
+          'potassium': item.potassium * factor,
+        };
       }).toList();
       res = await _repository.logMeal(mealType: mealType, items: items, date: DateTime.now());
     } else if (mealId != null) {

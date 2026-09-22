@@ -218,4 +218,49 @@ void main() {
           reason: '1 Ocak yanıtı 2 Ocak ekranına yazılmamalı'),
     );
   });
+
+  group('Ekstra besin silme (G-83)', () {
+    const MealItemModel serverItem =
+        MealItemModel(id: 7, foodId: 5, foodName: 'Yulaf', amount: 100, calories: 300, protein: 10, carbs: 50, fat: 5);
+    const MealItemModel pendingItem = MealItemModel(
+      id: 0,
+      foodId: 5,
+      foodName: 'Yulaf',
+      amount: 100,
+      calories: 300,
+      protein: 10,
+      carbs: 50,
+      fat: 5,
+      localId: 'L1',
+      queueKey: 'q1',
+    );
+
+    blocTest<DietEntryBloc, DietEntryState>(
+      'sunucudaki kalem silinince depo kalem kimliğiyle çağrılır ve günlük yeniden yüklenir',
+      build: () {
+        when(() => repository.deleteMealItem(7)).thenAnswer((_) async => ok<void>());
+        return buildBloc();
+      },
+      act: (bloc) => bloc.add(const DeleteExtraItem(serverItem)),
+      verify: (_) {
+        verify(() => repository.deleteMealItem(7)).called(1);
+        verifyNever(() => repository.discardPendingMealItem(any(), any()));
+        verify(() => repository.getDailyDietLog(any())).called(1);
+      },
+    );
+
+    blocTest<DietEntryBloc, DietEntryState>(
+      'kuyrukta bekleyen kalem sunucuya silme gönderilmeden kuyruktan çıkar ve günlük yeniden yüklenir',
+      build: () {
+        when(() => repository.discardPendingMealItem('q1', 'L1')).thenAnswer((_) async {});
+        return buildBloc();
+      },
+      act: (bloc) => bloc.add(const DeleteExtraItem(pendingItem)),
+      verify: (_) {
+        verify(() => repository.discardPendingMealItem('q1', 'L1')).called(1);
+        verifyNever(() => repository.deleteMealItem(any()));
+        verify(() => repository.getDailyDietLog(any())).called(1);
+      },
+    );
+  });
 }

@@ -10,6 +10,7 @@ import 'package:gymapp_v2/core/widgets/nutrient_chip.dart';
 import 'package:gymapp_v2/core/widgets/section_header.dart';
 import 'package:intl/intl.dart';
 import 'package:gymapp_v2/features/nutrition/data/models/diet_entry_model.dart';
+import 'package:gymapp_v2/features/nutrition/data/models/meal_entry_model.dart';
 import 'package:gymapp_v2/features/nutrition/data/models/meal_template_model.dart';
 import 'package:gymapp_v2/features/nutrition/presentation/bloc/diet_entry/diet_entry_bloc.dart';
 import 'package:gymapp_v2/features/nutrition/presentation/bloc/diet_entry/diet_entry_event.dart';
@@ -48,7 +49,12 @@ class _DietEntryPageState extends State<DietEntryPage> with SingleTickerProvider
 
   @override
   Widget build(BuildContext context) {
-    return BlocBuilder<DietEntryBloc, DietEntryState>(
+    return BlocConsumer<DietEntryBloc, DietEntryState>(
+      // Günlük ekrandayken çıkan hata (silme, işaretleme) sessiz kalmasın; ilk yükleme hatası sayfada yazıyor.
+      listenWhen: (previous, current) => current.error != null && current.error != previous.error && current.log != null,
+      listener: (context, state) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(state.error!)));
+      },
       builder: (context, state) {
         final bloc = context.read<DietEntryBloc>();
 
@@ -403,7 +409,7 @@ class _DietEntryPageState extends State<DietEntryPage> with SingleTickerProvider
     );
   }
 
-  Widget _buildPlannedMealCard(BuildContext context, DietEntryState state, DietEntryBloc bloc, PlannedMealModel meal, List<dynamic> extras) {
+  Widget _buildPlannedMealCard(BuildContext context, DietEntryState state, DietEntryBloc bloc, PlannedMealModel meal, List<MealEntryModel> extras) {
     final selected = state.localSelections[meal.mealId] ?? {};
     final isAllSelected = selected.length == meal.plannedIngredients.length && meal.plannedIngredients.isNotEmpty;
 
@@ -473,9 +479,125 @@ class _DietEntryPageState extends State<DietEntryPage> with SingleTickerProvider
               ),
             );
           }),
+          // G-83: 11.05.2026'daki BLoC geçişinde kaybolan ekstra bölümü ve ekleme düğmesi geri geldi.
+          if (extras.isNotEmpty) ...[
+            const SizedBox(height: AppSpacing.sm),
+            const Divider(color: AppColors.glassBorder, height: 1),
+            const SizedBox(height: AppSpacing.xs),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'EKSTRA',
+                style: AppTextStyles.sectionLabel.copyWith(color: AppColors.primary, letterSpacing: 1.2),
+              ),
+            ),
+            const SizedBox(height: AppSpacing.xxs),
+            ...extras.expand((MealEntryModel e) => e.items).map((MealItemModel item) => _buildExtraItemRow(bloc, item)),
+          ],
+          // Sepet öğünü eklendiği ana (bugüne) yazar; geçmiş güne eklemek yanlış güne yazardı.
+          if (_isToday(state.selectedDate)) ...[
+            const SizedBox(height: AppSpacing.sm),
+            SizedBox(
+              width: double.infinity,
+              child: TextButton.icon(
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+                  backgroundColor: AppColors.primary.withValues(alpha: 0.07),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
+                ),
+                onPressed: () => _openFoodSearch(bloc, meal.mealType),
+                icon: const Icon(Icons.add_circle_outline_rounded, color: AppColors.primary, size: 18),
+                label: Text(
+                  'Ekstra Besin Ekle',
+                  style: AppTextStyles.bodyText.copyWith(
+                    color: AppColors.primary,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );
+  }
+
+  Widget _buildExtraItemRow(DietEntryBloc bloc, MealItemModel item) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.xxs),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              item.foodName,
+              overflow: TextOverflow.ellipsis,
+              style: AppTextStyles.bodyText.copyWith(color: AppColors.textPrimary, fontSize: 13),
+            ),
+          ),
+          // Kuyrukta bekleyen kalem: sunucuya internet gelince gider (KR13).
+          if (item.isPending) ...[
+            const Icon(Icons.schedule_rounded, size: 14, color: AppColors.textMuted),
+            const SizedBox(width: AppSpacing.xxs),
+            Text(
+              'Bekliyor',
+              style: AppTextStyles.cardCaption.copyWith(color: AppColors.textMuted, fontSize: 11),
+            ),
+            const SizedBox(width: AppSpacing.xs),
+          ],
+          Text(
+            '${item.amount.toInt()} g',
+            style: AppTextStyles.cardCaption.copyWith(color: AppColors.textMuted, fontSize: 12),
+          ),
+          const SizedBox(width: AppSpacing.xs),
+          Text(
+            '${item.calories.toInt()} kcal',
+            style: AppTextStyles.cardCaption.copyWith(
+              color: AppColors.primary,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          IconButton(
+            tooltip: 'Sil',
+            visualDensity: VisualDensity.compact,
+            icon: const Icon(Icons.close_rounded, color: AppColors.error, size: 18),
+            onPressed: () => _confirmDeleteExtra(bloc, item),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _confirmDeleteExtra(DietEntryBloc bloc, MealItemModel item) async {
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: const Text('Besini sil'),
+        content: Text('"${item.foodName}" günlükten silinsin mi?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Vazgeç'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.error),
+            child: const Text('Sil'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted) return;
+    if (confirmed != true) return;
+    bloc.add(DeleteExtraItem(item));
+  }
+
+  Future<void> _openFoodSearch(DietEntryBloc bloc, MealType mealType) async {
+    await context.push('/nutrition/search', extra: <String, dynamic>{'mealType': mealType, 'isTemplateMode': false});
+    if (!mounted) return;
+    bloc.add(LoadDailyLog(bloc.state.selectedDate));
   }
 
   Widget _buildEmptyState() {

@@ -68,6 +68,8 @@ void main() {
   test('kayıt adı uca göre yazılır', () {
     expect(unsyncedRecordLabel('/training/sessions'), equals('Antrenman kaydı'));
     expect(unsyncedRecordLabel('/social/chat/send'), equals('Mesaj'));
+    expect(unsyncedRecordLabel('/nutrition/meal-logs/log'), equals('Öğün kaydı'));
+    expect(unsyncedRecordLabel('/nutrition/meal-logs/items/7'), equals('Besin silme'));
     expect(unsyncedRecordLabel('/baska'), equals('Kayıt'));
   });
 }
