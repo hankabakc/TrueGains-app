@@ -614,5 +614,42 @@ void main() {
     expect(box.containsKey(mealKey), isFalse);
     expect(box.length, equals(1));
   });
+
+  // --- K2-08 (G-84): kuyruk eklenme sırasıyla işlenir ---
+
+  Future<void> putRecord(Box<String> box, String key, String endpoint, String timestamp) => box.put(
+        key,
+        jsonEncode(<String, dynamic>{
+          'id': key,
+          'endpoint': endpoint,
+          'payload': <String, dynamic>{},
+          'timestamp': timestamp,
+          'ownerId': 1,
+        }),
+      );
+
+  test('kayıtlar anahtar sırasıyla değil eklenme sırasıyla gönderilir', () async {
+    final box = await Hive.openBox<String>(SyncManager.boxName);
+    final manager = managerFor(box);
+    // Anahtarların sözlük sırası (a, b) eklenme sırasının (b, a) tersi.
+    await putRecord(box, 'b', '/ilk-mesaj', '2026-09-18T08:00:00.000');
+    await putRecord(box, 'a', '/ikinci-mesaj', '2026-09-18T08:00:05.000');
+
+    await manager.syncPendingData();
+
+    verifyInOrder(<void Function()>[
+      () => dio.post<Map<String, dynamic>>('/ilk-mesaj', data: any(named: 'data')),
+      () => dio.post<Map<String, dynamic>>('/ikinci-mesaj', data: any(named: 'data')),
+    ]);
+  });
+
+  test('bekleyen kayıtlar eklenme sırasıyla listelenir', () async {
+    final box = await Hive.openBox<String>(SyncManager.boxName);
+    final manager = managerFor(box);
+    await putRecord(box, 'b', '/ilk', '2026-09-18T08:00:00.000');
+    await putRecord(box, 'a', '/ikinci', '2026-09-18T08:00:05.000');
+
+    expect(manager.pendingRecords().map((PendingRecord r) => r.endpoint).toList(), equals(<String>['/ilk', '/ikinci']));
+  });
 }
 

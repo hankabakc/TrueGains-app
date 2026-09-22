@@ -16,6 +16,7 @@ String unsyncedRecordLabel(String endpoint) {
   if (endpoint == '/social/chat/send') return 'Mesaj';
   if (endpoint == DietApiService.mealLogPath) return 'Öğün kaydı';
   if (endpoint.startsWith('${DietApiService.mealItemsPath}/')) return 'Besin silme';
+  if (endpoint.startsWith(DietApiService.togglePlannedPath)) return 'Öğün işareti';
   return 'Kayıt';
 }
 

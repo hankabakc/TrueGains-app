@@ -59,12 +59,41 @@ class NutritionRepository {
   Future<ApiResponse<DailyDietLogModel>> getDailyDietLog(DateTime date) async {
     final dateStr = date.toIso8601String().split('T')[0];
     final ApiResponse<DailyDietLogModel> res = await _dietService.getDailyDietLog(dateStr);
-    if (!res.success || res.data == null) return res;
+    final DailyDietLogModel? log =
+        (res.success && res.data != null) ? res.data : await _dayFromCachedProgram(date);
+    if (log == null) return res;
     return ApiResponse<DailyDietLogModel>(
       success: true,
       message: res.message,
       timestamp: res.timestamp,
-      data: _withQueued(res.data!, date),
+      data: _withQueued(log, date),
+    );
+  }
+
+  /// G-84: o gün internetle hiç açılmadıysa günlük önbellekte yoktur; internetsizken planlanan öğünler önbellekteki ana
+  /// programdan kurulur (sunucunun gün seçimiyle aynı: `DietEntryService.getPlannedMealsForDate`). Bağlantı varken
+  /// sunucu hatası olduğu gibi gösterilir.
+  Future<DailyDietLogModel?> _dayFromCachedProgram(DateTime date) async {
+    if (await _networkInfo.isConnected) return null;
+    final ApiResponse<DietProgramModel> program = await _dietService.getMainProgram();
+    final DietProgramModel? main = program.data;
+    if (!program.success || main == null) return null;
+    if (main.dietDays.isEmpty) {
+      return const DailyDietLogModel(plannedMeals: <PlannedMealModel>[], extraEntries: <MealEntryModel>[]);
+    }
+    final DietDayModel day = main.dietDays[(date.weekday - 1) % main.dietDays.length];
+    return DailyDietLogModel(
+      plannedMeals: <PlannedMealModel>[
+        for (final MealModel meal in day.meals)
+          PlannedMealModel(
+            mealId: meal.id,
+            mealType: meal.mealType,
+            plannedIngredients: meal.ingredients,
+            isConsumed: false,
+            consumedIngredientIds: const <int>[],
+          ),
+      ],
+      extraEntries: const <MealEntryModel>[],
     );
   }
 
@@ -119,7 +148,48 @@ class NutritionRepository {
       ));
     }
 
-    return DailyDietLogModel(plannedMeals: log.plannedMeals, extraEntries: entries);
+    return DailyDietLogModel(plannedMeals: _withQueuedToggles(log.plannedMeals, queued, date), extraEntries: entries);
+  }
+
+  /// G-84: kuyruktaki "planlananı işaretle" istekleri o günün planlanan öğünlerine uygulanır; aynı öğünde en son
+  /// eklenen geçerlidir (kuyruk eklenme sırasıyla okunur, K2-08). Sunucu davranışıyla aynı: işaret kaldırılınca boş,
+  /// malzeme verilmeden işaretlenince öğünün bütün malzemeleri.
+  List<PlannedMealModel> _withQueuedToggles(List<PlannedMealModel> meals, List<PendingRecord> queued, DateTime date) {
+    final String dateStr = date.toIso8601String().split('T')[0];
+    final Map<int, ({bool consumed, List<int> ids})> toggles = <int, ({bool consumed, List<int> ids})>{};
+    for (final PendingRecord r in queued) {
+      final Uri uri = Uri.parse(r.endpoint);
+      if (uri.path != DietApiService.togglePlannedPath || uri.queryParameters['date'] != dateStr) continue;
+      final int? mealId = int.tryParse(uri.queryParameters['mealId'] ?? '');
+      if (mealId == null) continue;
+      toggles[mealId] = (
+        consumed: uri.queryParameters['consumed'] == 'true',
+        ids: <int>[
+          for (final String s in uri.queryParametersAll['ingredientIds'] ?? const <String>[])
+            if (int.tryParse(s) != null) int.parse(s),
+        ],
+      );
+    }
+    if (toggles.isEmpty) return meals;
+
+    return <PlannedMealModel>[
+      for (final PlannedMealModel meal in meals)
+        if (toggles[meal.mealId] case final t?)
+          PlannedMealModel(
+            mealId: meal.mealId,
+            mealType: meal.mealType,
+            plannedIngredients: meal.plannedIngredients,
+            isConsumed: t.consumed,
+            mealEntryId: meal.mealEntryId,
+            consumedIngredientIds: !t.consumed
+                ? const <int>[]
+                : t.ids.isNotEmpty
+                    ? t.ids
+                    : <int>[for (final MealIngredientModel ing in meal.plannedIngredients) if (ing.id != null) ing.id!],
+          )
+        else
+          meal,
+    ];
   }
 
   Future<ApiResponse<MealEntryModel>> togglePlannedMeal({
@@ -129,7 +199,20 @@ class NutritionRepository {
     List<int>? ingredientIds,
   }) async {
     final dateStr = date.toIso8601String().split('T')[0];
-    return _dietService.togglePlannedMeal(dateStr, mealId, consumed, ingredientIds: ingredientIds);
+    if (await _networkInfo.isConnected) {
+      return _dietService.togglePlannedMeal(dateStr, mealId, consumed, ingredientIds: ingredientIds);
+    }
+
+    // KR13 (G-84): bağlantı yoksa işaret kuyruğa girer. Sunucu işareti yeniden kurar (ekleme değil), tekrar gitmesi zararsız.
+    await _syncManager.addToQueue(
+      DietApiService.togglePlannedEndpoint(dateStr, mealId, consumed, ingredientIds),
+      <String, dynamic>{},
+    );
+    return ApiResponse<MealEntryModel>(
+      success: true,
+      message: 'Bağlantı yok. İşaret internet geldiğinde kaydedilecek.',
+      timestamp: DateTime.now().toIso8601String(),
+    );
   }
 
   Future<ApiResponse<void>> deleteMealItem(int itemId) async {

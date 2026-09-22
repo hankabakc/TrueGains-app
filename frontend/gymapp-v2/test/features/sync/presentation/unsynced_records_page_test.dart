@@ -70,6 +70,7 @@ void main() {
     expect(unsyncedRecordLabel('/social/chat/send'), equals('Mesaj'));
     expect(unsyncedRecordLabel('/nutrition/meal-logs/log'), equals('Öğün kaydı'));
     expect(unsyncedRecordLabel('/nutrition/meal-logs/items/7'), equals('Besin silme'));
+    expect(unsyncedRecordLabel('/diet/log/toggle-planned?date=2026-09-18&mealId=55&consumed=true'), equals('Öğün işareti'));
     expect(unsyncedRecordLabel('/baska'), equals('Kayıt'));
   });
 }

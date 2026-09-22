@@ -10,6 +10,18 @@ import 'base_nutrition_service.dart';
 class DietApiService extends BaseNutritionService {
   static const String mealLogPath = '/nutrition/meal-logs/log';
   static const String mealItemsPath = '/nutrition/meal-logs/items';
+  static const String togglePlannedPath = '/diet/log/toggle-planned';
+
+  /// Kuyruğa giren "planlananı işaretle" isteğinin adresi (G-84); parametreler çevrimiçi istekle aynı biçimde
+  /// (`ingredientIds=1&ingredientIds=2`).
+  static String togglePlannedEndpoint(String date, int mealId, bool consumed, List<int>? ingredientIds) {
+    return Uri(path: togglePlannedPath, queryParameters: <String, dynamic>{
+      'date': date,
+      'mealId': '$mealId',
+      'consumed': '$consumed',
+      if (ingredientIds != null && ingredientIds.isNotEmpty) 'ingredientIds': <String>[for (final int id in ingredientIds) '$id'],
+    }).toString();
+  }
 
   DietApiService(super.dioClient);
 
@@ -46,7 +58,7 @@ class DietApiService extends BaseNutritionService {
         params['ingredientIds'] = ingredientIds;
       }
       final response = await dioClient.dio.post<Map<String, dynamic>>(
-        '/diet/log/toggle-planned',
+        togglePlannedPath,
         queryParameters: params,
       );
       return ApiResponse.fromJson(

@@ -145,7 +145,7 @@ class SyncManager {
       final bool isConnected = await networkInfo.isConnected;
       if (!isConnected) return;
 
-      final List<String> keys = syncBox.keys.cast<String>().toList();
+      final List<String> keys = _keysInQueueOrder();
 
       for (final key in keys) {
         final String? rawData = syncBox.get(key);
@@ -196,20 +196,40 @@ class SyncManager {
   /// Kayıt yöntemi; G-83 öncesi kayıtlarda alan yok, hepsi POST'tu.
   static String _methodOf(Map<String, dynamic> item) => (item['method'] as String?) ?? methodPost;
 
-  /// Oturumdaki kullanıcının okunabilen kuyruk kayıtları (anahtar → kayıt).
+  /// Kuyruk anahtarları eklenme sırasıyla (K2-08). Anahtar rastgele UUID ve Hive dize anahtarları sözlük sırasıyla
+  /// döndürür; sıra kayıttaki zaman damgasından gelir. Aynı öğünün iki işareti ve art arda yazılan mesajlar bu sırayla gider.
+  // ponytail: aynı mikrosaniyedeki iki kaydın sırası belirsiz; olursa kayda sıra sayacı eklenir.
+  List<String> _keysInQueueOrder() {
+    final Map<String, DateTime> addedAt = <String, DateTime>{};
+    for (final dynamic key in syncBox.keys) {
+      DateTime at = DateTime(0);
+      try {
+        final Object? decoded = jsonDecode(syncBox.get(key) ?? '{}');
+        if (decoded is Map<String, dynamic>) {
+          at = DateTime.tryParse((decoded['timestamp'] as String?) ?? '') ?? at;
+        }
+      } on FormatException {
+        // Bozuk kayıt en başa düşer; gönderimde yine atlanır.
+      }
+      addedAt[key as String] = at;
+    }
+    return addedAt.keys.toList()..sort((String a, String b) => addedAt[a]!.compareTo(addedAt[b]!));
+  }
+
+  /// Oturumdaki kullanıcının okunabilen kuyruk kayıtları (anahtar → kayıt), eklenme sırasıyla.
   List<MapEntry<String, Map<String, dynamic>>> _ownItems() {
     final int? owner = currentUserId();
     if (owner == null) return const <MapEntry<String, Map<String, dynamic>>>[];
 
     final List<MapEntry<String, Map<String, dynamic>>> items = <MapEntry<String, Map<String, dynamic>>>[];
-    for (final dynamic key in syncBox.keys) {
+    for (final String key in _keysInQueueOrder()) {
       final String? raw = syncBox.get(key);
       if (raw == null) continue;
       try {
         final Map<String, dynamic> item = jsonDecode(raw) as Map<String, dynamic>;
         final Object? itemOwner = item['ownerId'];
         if (itemOwner != null && itemOwner != owner) continue;
-        items.add(MapEntry<String, Map<String, dynamic>>(key as String, item));
+        items.add(MapEntry<String, Map<String, dynamic>>(key, item));
       } on FormatException {
         continue;
       }

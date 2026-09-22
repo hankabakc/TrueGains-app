@@ -81,6 +81,32 @@ void main() {
     expect(result.success, isTrue);
   });
 
+  test('kuyruktaki işaret adresi sunucuya çevrimiçi istekle aynı parametreleri taşır (G-84)', () async {
+    final dio = Dio(BaseOptions(baseUrl: 'http://localhost/api/v1'));
+    final List<Uri> sent = <Uri>[];
+    dio.interceptors.add(InterceptorsWrapper(
+      onRequest: (options, handler) {
+        sent.add(options.uri);
+        handler.resolve(Response<Map<String, dynamic>>(
+          requestOptions: options,
+          data: <String, dynamic>{'success': true, 'message': 'ok', 'data': <String, dynamic>{'id': 1}},
+          statusCode: 200,
+        ));
+      },
+    ));
+
+    await DietApiService(FakeDioClient(dio)).togglePlannedMeal('2026-09-18', 55, true, ingredientIds: [1, 2]);
+    // SyncManager kuyruktaki kaydı böyle gönderir: adres + boş gövde.
+    await dio.post<Map<String, dynamic>>(
+      DietApiService.togglePlannedEndpoint('2026-09-18', 55, true, [1, 2]),
+      data: <String, dynamic>{},
+    );
+
+    expect(sent[1].path, sent[0].path);
+    expect(sent[1].queryParametersAll, sent[0].queryParametersAll);
+    expect(sent[1].queryParametersAll['ingredientIds'], <String>['1', '2']);
+  });
+
   test('başkasının kalemini silme (400) başarı sayılmaz', () async {
     final dio = rejectingDio(400, 'Bu kayıt size ait değil!', (_) {});
 
