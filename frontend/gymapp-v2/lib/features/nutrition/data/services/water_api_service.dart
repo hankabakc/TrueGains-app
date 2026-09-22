@@ -6,13 +6,24 @@ import '../models/client_water_tracking_model.dart';
 import 'base_nutrition_service.dart';
 
 class WaterApiService extends BaseNutritionService {
+  static const String waterPath = '/nutrition/water';
+
   WaterApiService(super.dioClient);
 
-  Future<ApiResponse<WaterIntakeModel>> addWater(int amountMl) async {
+  /// Kuyruğa giren su kaydının adresi (G-86): cihaz kimliği tekrar korumasına, gün kaydın eklendiği güne yarar.
+  static String addWaterEndpoint(int amountMl, String localId, String intakeDate) {
+    return Uri(path: waterPath, queryParameters: <String, dynamic>{
+      'amountMl': '$amountMl',
+      'localId': localId,
+      'intakeDate': intakeDate,
+    }).toString();
+  }
+
+  Future<ApiResponse<WaterIntakeModel>> addWater(int amountMl, {String? localId}) async {
     try {
       final response = await dioClient.dio.post<Map<String, dynamic>>(
-        '/nutrition/water',
-        queryParameters: {'amountMl': amountMl},
+        waterPath,
+        queryParameters: <String, dynamic>{'amountMl': amountMl, if (localId != null) 'localId': localId},
       );
       return ApiResponse.fromJson(
         response.data ?? <String, dynamic>{},
@@ -110,10 +121,14 @@ class WaterApiService extends BaseNutritionService {
   Future<ApiResponse<void>> deleteWaterIntake(int id) async {
     try {
       final response = await dioClient.dio.delete<Map<String, dynamic>>(
-        '/nutrition/water/$id',
+        '$waterPath/$id',
       );
       return ApiResponse.fromJson(response.data ?? <String, dynamic>{}, (_) {});
     } on DioException catch (e) {
+      // G-86: kayıt sunucuda zaten yoksa (başka cihazdan ya da kuyruktan silinmiş) silme amacına ulaşmıştır.
+      if (e.response?.statusCode == 404) {
+        return ApiResponse(success: true, message: 'Silindi', timestamp: '');
+      }
       return handleError(e);
     } catch (e) {
       return ApiResponse.error(friendlyError(e));

@@ -194,5 +194,24 @@ void main() {
         verify(() => repository.getDailyWaterSummary(any())).called(1);
       },
     );
+
+    blocTest<WaterBloc, WaterState>(
+      'kuyrukta bekleyen su kaydı sunucuya silme gönderilmeden kuyruktan çıkar ve özet yeniden çekilir (G-86)',
+      build: () {
+        when(() => repository.discardPendingWater('q1')).thenAnswer((_) async {});
+        when(() => repository.getDailyWaterSummary(any()))
+            .thenAnswer((_) async => ok<WaterDailySummaryModel>(sampleSummary));
+        when(() => repository.getWaterRangeSummary(any(), any()))
+            .thenAnswer((_) async => ok<List<WaterDailyTotalModel>>(sampleHistory));
+        return buildBloc();
+      },
+      act: (bloc) => bloc.add(const DiscardPendingWaterIntake('q1')),
+      wait: const Duration(milliseconds: 50),
+      verify: (bloc) {
+        verify(() => repository.discardPendingWater('q1')).called(1);
+        verifyNever(() => repository.deleteWaterIntake(any()));
+        verify(() => repository.getDailyWaterSummary(any())).called(1);
+      },
+    );
   });
 }

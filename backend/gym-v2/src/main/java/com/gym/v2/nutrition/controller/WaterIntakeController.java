@@ -3,6 +3,10 @@ package com.gym.v2.nutrition.controller;
 import com.gym.v2.core.response.ApiResponse;
 import com.gym.v2.nutrition.dto.*;
 import com.gym.v2.nutrition.service.WaterIntakeService;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Size;
+import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
@@ -10,6 +14,7 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/v1/nutrition/water")
+@Validated
 public class WaterIntakeController {
 
 	private final WaterIntakeService waterIntakeService;
@@ -21,10 +26,18 @@ public class WaterIntakeController {
 		this.clock = clock;
 	}
 
+	/**
+	 * {@code localId} ve {@code intakeDate} internetsiz kuyruktan gelen kayıt içindir
+	 * (G-86): tekrar koruması ve kaydın eklendiği gün.
+	 */
 	@PostMapping
-	public ApiResponse<WaterIntakeResponse> addWater(@RequestParam Integer amountMl) {
-		return ApiResponse.success(waterIntakeService.addWater(amountMl), "Su tüketimi başarıyla kaydedildi.",
-				clock.instant());
+	public ApiResponse<WaterIntakeResponse> addWater(
+			@RequestParam @Min(value = 1, message = "Su miktarı en az 1 ml olmalıdır.") Integer amountMl,
+			@RequestParam(required = false) @Size(max = 36,
+					message = "Yerel kimlik en fazla 36 karakter olabilir.") String localId,
+			@RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate intakeDate) {
+		return ApiResponse.success(waterIntakeService.addWater(amountMl, localId, intakeDate),
+				"Su tüketimi başarıyla kaydedildi.", clock.instant());
 	}
 
 	@GetMapping("/summary")

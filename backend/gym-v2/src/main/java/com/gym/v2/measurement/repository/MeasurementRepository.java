@@ -31,6 +31,9 @@ public interface MeasurementRepository extends JpaRepository<Measurement, Long> 
 	 */
 	Optional<Measurement> findFirstByUser_ExternalIdAndCreatedAtBetween(String externalId, Instant start, Instant end);
 
+	/** Tekrar koruması (G-86): aynı kullanıcının aynı cihaz kimlikli ölçümü. */
+	Optional<Measurement> findByUser_IdAndLocalId(Long userId, String localId);
+
 	/**
 	 * Antrenörün belirli bir sporcunun paylaştığı ölçümleri sayfalama ile listeler.
 	 */

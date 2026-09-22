@@ -9,8 +9,8 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
-import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import java.math.BigDecimal;
 import java.time.Instant;
 
@@ -22,7 +22,8 @@ import java.time.Instant;
  * Pure Java Politikası: Lombok kullanılmaz, tüm getter/setter'lar manueldir.
  */
 @Entity
-@Table(name = "measurements")
+@Table(name = "measurements", uniqueConstraints = @UniqueConstraint(name = "uq_measurements_user_local",
+		columnNames = { "user_id", "local_id" }))
 public class Measurement {
 
 	@Id
@@ -86,10 +87,9 @@ public class Measurement {
 	@Column(name = "is_shared_with_coach", nullable = false)
 	private Boolean isSharedWithCoach = false;
 
-	@PrePersist
-	protected void onCreate() {
-		this.createdAt = Instant.now();
-	}
+	/** Cihazın kayda verdiği kimlik (G-86); tekrar gelen istek ikinci satır açmaz. */
+	@Column(name = "local_id", length = 36)
+	private String localId;
 
 	// ===================== GETTER & SETTER =====================
 
@@ -215,6 +215,22 @@ public class Measurement {
 
 	public Instant getCreatedAt() {
 		return createdAt;
+	}
+
+	/**
+	 * Ölçüm anı servis tarafından verilir (Clock ya da internetsiz kaydın cihazdaki anı,
+	 * G-86).
+	 */
+	public void setCreatedAt(Instant createdAt) {
+		this.createdAt = createdAt;
+	}
+
+	public String getLocalId() {
+		return localId;
+	}
+
+	public void setLocalId(String localId) {
+		this.localId = localId;
 	}
 
 	public Boolean getIsSharedWithCoach() {

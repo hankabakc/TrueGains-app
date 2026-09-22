@@ -71,6 +71,10 @@ void main() {
     expect(unsyncedRecordLabel('/nutrition/meal-logs/log'), equals('Öğün kaydı'));
     expect(unsyncedRecordLabel('/nutrition/meal-logs/items/7'), equals('Besin silme'));
     expect(unsyncedRecordLabel('/diet/log/toggle-planned?date=2026-09-18&mealId=55&consumed=true'), equals('Öğün işareti'));
+    expect(unsyncedRecordLabel('/nutrition/water?amountMl=250&localId=L1&intakeDate=2026-09-18'), equals('Su kaydı'));
+    expect(unsyncedRecordLabel('/nutrition/water/9'), equals('Su silme'));
+    expect(unsyncedRecordLabel('/measurements'), equals('Ölçüm'));
+    expect(unsyncedRecordLabel('/measurements/5'), equals('Ölçüm silme'));
     expect(unsyncedRecordLabel('/baska'), equals('Kayıt'));
   });
 }

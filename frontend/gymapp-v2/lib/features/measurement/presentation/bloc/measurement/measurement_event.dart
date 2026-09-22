@@ -20,6 +20,14 @@ class DeleteMeasurement extends MeasurementEvent {
   List<Object?> get props => [id];
 }
 
+/// Sunucuya hiç gitmemiş (kuyrukta bekleyen) ölçümün silinmesi (G-86).
+class DiscardPendingMeasurement extends MeasurementEvent {
+  final String queueKey;
+  const DiscardPendingMeasurement(this.queueKey);
+  @override
+  List<Object?> get props => [queueKey];
+}
+
 class ToggleSelectionMode extends MeasurementEvent {}
 
 class ToggleMeasurementSelection extends MeasurementEvent {

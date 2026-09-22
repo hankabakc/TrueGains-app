@@ -9,7 +9,8 @@ import java.time.LocalDateTime;
  * Su Tüketimi Entity (WaterIntake)
  */
 @Entity
-@Table(name = "water_intake")
+@Table(name = "water_intake", uniqueConstraints = @UniqueConstraint(name = "uq_water_intake_user_local",
+		columnNames = { "user_id", "local_id" }))
 public class WaterIntake {
 
 	@Id
@@ -28,6 +29,10 @@ public class WaterIntake {
 
 	@Column(name = "created_at", updatable = false)
 	private LocalDateTime createdAt;
+
+	/** Cihazın kayda verdiği kimlik (G-86); tekrar gelen istek ikinci satır açmaz. */
+	@Column(name = "local_id", length = 36)
+	private String localId;
 
 	// --- Constructors ---
 
@@ -81,6 +86,14 @@ public class WaterIntake {
 
 	public void setCreatedAt(LocalDateTime createdAt) {
 		this.createdAt = createdAt;
+	}
+
+	public String getLocalId() {
+		return localId;
+	}
+
+	public void setLocalId(String localId) {
+		this.localId = localId;
 	}
 
 }

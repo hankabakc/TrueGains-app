@@ -63,5 +63,8 @@ public record MeasurementDTO(
 		@Schema(description = "Ölçüm tarihi", example = "2026-03-31T14:30:00Z") @PastOrPresent(
 				message = "Ölçüm tarihi gelecekte olamaz") Instant createdAt,
 
-		@Schema(description = "Antrenörle paylaşılma durumu", example = "false") Boolean isSharedWithCoach) {
+		@Schema(description = "Antrenörle paylaşılma durumu", example = "false") Boolean isSharedWithCoach,
+
+		@Schema(description = "Cihazın kayda verdiği kimlik; aynı kimlikle ikinci istek yeni kayıt açmaz (G-86)") @Size(
+				max = 36, message = "Yerel kimlik en fazla 36 karakter olabilir.") String localId) {
 }

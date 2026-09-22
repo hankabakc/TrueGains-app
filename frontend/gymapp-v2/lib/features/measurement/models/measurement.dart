@@ -19,6 +19,11 @@ class Measurement {
   final DateTime? createdAt; // Ölçüm tarihi
   final bool isSharedWithCoach; // Antrenörle paylaşılma durumu
 
+  /// Kuyrukta bekleyen (sunucuya henüz gitmemiş) ölçümün kuyruk anahtarı (G-86); sunucudaki kayıtta null.
+  final String? queueKey;
+
+  bool get isPending => queueKey != null;
+
   Measurement({
     this.id,
     this.weight,
@@ -36,6 +41,7 @@ class Measurement {
     this.notes,
     this.createdAt,
     this.isSharedWithCoach = false,
+    this.queueKey,
   });
 
   /// JSON → Measurement dönüşümü (API'den gelen veri)
@@ -97,6 +103,7 @@ class Measurement {
     String? notes,
     DateTime? createdAt,
     bool? isSharedWithCoach,
+    String? queueKey,
   }) {
     return Measurement(
       id: id ?? this.id,
@@ -115,6 +122,7 @@ class Measurement {
       notes: notes ?? this.notes,
       createdAt: createdAt ?? this.createdAt,
       isSharedWithCoach: isSharedWithCoach ?? this.isSharedWithCoach,
+      queueKey: queueKey ?? this.queueKey,
     );
   }
 }

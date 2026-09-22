@@ -1,36 +1,70 @@
 import 'package:dio/dio.dart';
 import 'package:gymapp_v2/core/network/dio_client.dart';
 import 'package:gymapp_v2/core/network/api_response.dart';
+import 'package:gymapp_v2/core/network/network_info.dart';
+import 'package:gymapp_v2/core/network/offline_cache.dart';
+import 'package:gymapp_v2/core/network/sync_manager.dart';
 import 'package:gymapp_v2/features/measurement/models/client_measurements_summary.dart';
 import 'package:gymapp_v2/features/measurement/models/measurement.dart';
+import 'package:uuid/uuid.dart';
 
 /// GYMAPP-V2 Ölçüm Repository'si.
-/// Backend ölçüm API'si ile iletişimi yönetir.
+/// Backend ölçüm API'si ile iletişimi yönetir. Ekleme ve silme internetsiz kuyruğa girer (KR13, G-86).
 class MeasurementRepository {
+  static const String measurementsPath = '/measurements';
+
   final DioClient _dioClient;
+  final NetworkInfo _networkInfo;
+  final SyncManager _syncManager;
 
-  MeasurementRepository(this._dioClient);
+  MeasurementRepository(this._dioClient, this._networkInfo, this._syncManager);
 
-  /// Kullanıcının tüm ölçüm geçmişini getirir (en yeniden eskiye).
+  /// Kullanıcının tüm ölçüm geçmişini getirir (en yeniden eskiye). Kendi listesinde kuyruktaki ölçümler en üstte
+  /// "bekliyor" olarak görünür, silinmeyi bekleyen ölçüm gizlenir (G-86).
   Future<List<Measurement>> getMyMeasurements({int? clientId}) async {
     try {
-      final path = clientId != null ? '/measurements/client/$clientId' : '/measurements';
+      final path = clientId != null ? '$measurementsPath/client/$clientId' : measurementsPath;
       final response = await _dioClient.dio.get<Map<String, dynamic>>(path);
       final responseData = response.data;
-      if (responseData == null) return [];
+      if (responseData == null) return clientId == null ? _withQueued(const <Measurement>[]) : [];
 
       final apiResponse = ApiResponse<List<dynamic>>.fromJson(
         responseData,
         (json) => (json as Map<String, dynamic>)['content'] as List<dynamic>,
       );
-      return apiResponse.data
+      final List<Measurement> list = apiResponse.data
               ?.map((json) => Measurement.fromJson(json as Map<String, dynamic>))
               .toList() ??
           [];
+      return clientId == null ? _withQueued(list) : list;
     } on DioException catch (e) {
+      // İnternetsiz ve liste önbellekte yoksa en azından kuyruktaki ölçümler görünür.
+      if (clientId == null && OfflineCacheInterceptor.isUnreachable(e)) {
+        return _withQueued(const <Measurement>[]);
+      }
       _handleError(e);
       return [];
     }
+  }
+
+  List<Measurement> _withQueued(List<Measurement> list) {
+    final List<PendingRecord> queued = _syncManager.pendingRecords();
+    const String deletePrefix = '$measurementsPath/';
+    final Set<int> deletedIds = <int>{
+      for (final PendingRecord r in queued)
+        if (r.method == SyncManager.methodDelete && r.endpoint.startsWith(deletePrefix))
+          int.tryParse(r.endpoint.substring(deletePrefix.length)) ?? -1,
+    };
+    // Kuyruk eklenme sırasıyla (eskiden yeniye) gelir; liste yeniden eskiye.
+    final List<Measurement> pending = <Measurement>[
+      for (final PendingRecord r in queued.reversed)
+        if (r.method == SyncManager.methodPost && r.endpoint == measurementsPath)
+          Measurement.fromJson(r.payload).copyWith(queueKey: r.key),
+    ];
+    return <Measurement>[
+      ...pending,
+      ...list.where((Measurement m) => !deletedIds.contains(m.id)),
+    ];
   }
 
   /// Bugün girilmiş bir ölçüm varsa getirir.
@@ -53,10 +87,23 @@ class MeasurementRepository {
 
   /// Yeni bir ölçüm kaydı ekler.
   Future<Measurement> addMeasurement(Measurement measurement) async {
+    // Tekrar koruması (G-86): ölçüm cihazda kimlik alır; çevrimiçi ve kuyruk yolu aynı kimliği taşır.
+    final String localId = const Uuid().v4();
+    if (!await _networkInfo.isConnected) {
+      // KR13 (G-86): bağlantı yoksa ölçüm kuyruğa girer; zamanı eklendiği an, gönderildiği an değil.
+      final Map<String, dynamic> payload = <String, dynamic>{
+        ...measurement.toJson(),
+        'localId': localId,
+        'createdAt': DateTime.now().toUtc().toIso8601String(),
+      };
+      await _syncManager.addToQueue(measurementsPath, payload);
+      return Measurement.fromJson(payload);
+    }
+
     try {
       final response = await _dioClient.dio.post<Map<String, dynamic>>(
-        '/measurements',
-        data: measurement.toJson(),
+        measurementsPath,
+        data: <String, dynamic>{...measurement.toJson(), 'localId': localId},
       );
       final responseData = response.data;
       if (responseData == null) throw Exception('Kayıt eklenemedi.');
@@ -74,18 +121,32 @@ class MeasurementRepository {
 
   /// Belirli bir ölçüm kaydını siler.
   Future<void> deleteMeasurement(int id) async {
+    if (!await _networkInfo.isConnected) {
+      // KR13 (G-86): bağlantı yoksa silme kuyruğa girer; liste ölçümü hemen gizler.
+      await _syncManager.addToQueue('$measurementsPath/$id', <String, dynamic>{}, method: SyncManager.methodDelete);
+      return;
+    }
     try {
       final response = await _dioClient.dio.delete<Map<String, dynamic>>(
-        '/measurements/$id',
+        '$measurementsPath/$id',
       );
-      if (response.statusCode != 200) {
+      // Sunucu silmede 204 döner (MeasurementController @ResponseStatus(NO_CONTENT)); yalnız 200 beklendiği için
+      // her başarılı silme "Ölçüm silinemedi" gösteriyordu (G-86).
+      if (response.statusCode != 200 && response.statusCode != 204) {
         final responseData = response.data;
         throw Exception(responseData?['message'] ?? 'Ölçüm silinemedi.');
       }
     } on DioException catch (e) {
+      // Ölçüm sunucuda zaten yoksa (başka cihazdan ya da kuyruktan silinmiş) silme amacına ulaşmıştır.
+      if (e.response?.statusCode == 404) return;
       _handleError(e);
       rethrow;
     }
+  }
+
+  /// Sunucuya henüz gitmemiş ölçümü kuyruktan çıkarır; kullanıcının silmesiyle çağrılır (G-86).
+  Future<void> discardPending(String queueKey) {
+    return _syncManager.discard(queueKey);
   }
 
   /// Seçilen ölçümleri antrenörle paylaşır.

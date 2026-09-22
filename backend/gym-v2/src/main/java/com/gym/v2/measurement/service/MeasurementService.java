@@ -17,6 +17,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.stream.Collectors;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -60,9 +61,21 @@ public class MeasurementService {
 		ClientEntity client = clientRepository.findByUserId(currentUser.getId())
 			.orElseThrow(() -> new NotFoundException("Sporcu bilgisi bulunamadı."));
 
+		// G-86: kuyruktan ya da zaman aşımında yeniden gelen ölçüm ikinci kez yazılmaz.
+		if (dto.localId() != null) {
+			Optional<Measurement> existing = measurementRepository.findByUser_IdAndLocalId(currentUser.getId(),
+					dto.localId());
+			if (existing.isPresent()) {
+				return measurementMapper.toDTO(existing.get());
+			}
+		}
+
 		// MapStruct kullanımı (Anayasa kuralı: Manuel mapping yasak)
 		Measurement measurement = measurementMapper.toEntity(dto);
 		measurement.setUser(currentUser);
+		// İnternetsiz eklenen ölçüm cihazdaki anını taşır; gönderildiği ana kaymaz
+		// (G-86). Yoksa şimdi (Clock).
+		measurement.setCreatedAt(dto.createdAt() != null ? dto.createdAt() : clock.instant());
 
 		// Eğer antrenörü yoksa, zorla paylaşımı false yapıyoruz
 		if (client.getCoachId() == null) {

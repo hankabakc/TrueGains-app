@@ -8,6 +8,7 @@ import org.springframework.stereotype.Repository;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Su Tüketimi Veri Erişim Katmanı (WaterIntakeRepository)
@@ -16,6 +17,9 @@ import java.util.List;
 public interface WaterIntakeRepository extends JpaRepository<WaterIntake, Long> {
 
 	List<WaterIntake> findByUserIdAndIntakeDate(Long userId, LocalDate date);
+
+	/** Tekrar koruması (G-86): aynı kullanıcının aynı cihaz kimlikli kaydı. */
+	Optional<WaterIntake> findByUserIdAndLocalId(Long userId, String localId);
 
 	@Query("SELECT SUM(wi.amountMl) FROM WaterIntake wi WHERE wi.user.id = :userId AND wi.intakeDate = :date")
 	Integer getTotalIntakeByDate(@Param("userId") Long userId, @Param("date") LocalDate date);

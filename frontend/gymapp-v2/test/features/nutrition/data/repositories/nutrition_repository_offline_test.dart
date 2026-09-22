@@ -7,6 +7,7 @@ import 'package:gymapp_v2/features/nutrition/data/models/diet_program_model.dart
 import 'package:gymapp_v2/features/nutrition/data/models/diet_source.dart';
 import 'package:gymapp_v2/features/nutrition/data/models/meal_entry_model.dart';
 import 'package:gymapp_v2/features/nutrition/data/models/meal_template_model.dart';
+import 'package:gymapp_v2/features/nutrition/data/models/water_intake_model.dart';
 import 'package:gymapp_v2/features/nutrition/data/repositories/nutrition_repository.dart';
 import 'package:gymapp_v2/features/nutrition/data/services/analytics_api_service.dart';
 import 'package:gymapp_v2/features/nutrition/data/services/diet_api_service.dart';
@@ -35,6 +36,7 @@ void main() {
   ];
 
   late MockDietApiService diet;
+  late MockWaterApiService water;
   late MockNetworkInfo networkInfo;
   late MockSyncManager syncManager;
   late NutritionRepository repository;
@@ -47,11 +49,12 @@ void main() {
 
   setUp(() {
     diet = MockDietApiService();
+    water = MockWaterApiService();
     networkInfo = MockNetworkInfo();
     syncManager = MockSyncManager();
     repository = NutritionRepository(
       dietService: diet,
-      waterService: MockWaterApiService(),
+      waterService: water,
       foodService: MockFoodApiService(),
       analyticsService: MockAnalyticsApiService(),
       networkInfo: networkInfo,
@@ -487,5 +490,152 @@ void main() {
     expect(result.success, isFalse);
     expect(result.message, 'Sunucu hatası');
     verifyNever(() => diet.getMainProgram());
+  });
+
+  // --- G-86: su internetsiz ---
+
+  WaterDailySummaryModel waterDay(int total, int target, List<WaterIntakeModel> intakes,
+          {List<CustomGlassModel> glasses = const <CustomGlassModel>[]}) =>
+      WaterDailySummaryModel(totalIntakeMl: total, targetMl: target, intakes: intakes, customGlasses: glasses);
+
+  WaterIntakeModel serverIntake(int id, int amountMl) => WaterIntakeModel(
+        id: id,
+        amountMl: amountMl,
+        date: DateTime(2026, 9, 18),
+        createdAt: DateTime(2026, 9, 18, 9),
+      );
+
+  PendingRecord queuedWater(String key, int amountMl, String date) => PendingRecord(
+        key: key,
+        endpoint: WaterApiService.addWaterEndpoint(amountMl, 'L-$key', date),
+        method: SyncManager.methodPost,
+        payload: <String, dynamic>{},
+        preview: <Map<String, dynamic>>[
+          <String, dynamic>{'createdAt': '${date}T10:15:00.000'},
+        ],
+      );
+
+  test('bağlantı yokken su kaydı cihaz kimliği ve eklendiği günle kuyruğa girer, sunucuya gidilmez', () async {
+    when(() => networkInfo.isConnected).thenAnswer((_) async => false);
+
+    final ApiResponse<WaterIntakeModel> result = await repository.addWater(250);
+
+    final List<dynamic> captured = verify(
+      () => syncManager.addToQueue(
+        captureAny(),
+        <String, dynamic>{},
+        method: SyncManager.methodPost,
+        preview: captureAny(named: 'preview'),
+      ),
+    ).captured;
+    final Uri uri = Uri.parse(captured[0] as String);
+    expect(uri.path, '/nutrition/water');
+    expect(uri.queryParameters['amountMl'], '250');
+    expect(uri.queryParameters['localId'], matches(uuidPattern));
+    expect(uri.queryParameters['intakeDate'], DateTime.now().toIso8601String().split('T')[0]);
+    expect((captured[1] as List<Map<String, dynamic>>).single['createdAt'], isNotNull);
+    verifyNever(() => water.addWater(any(), localId: any(named: 'localId')));
+    expect(result.success, isTrue);
+  });
+
+  test('bağlantı varken su kaydı cihaz kimliğiyle sunucuya gider, kuyruğa girmez', () async {
+    when(() => networkInfo.isConnected).thenAnswer((_) async => true);
+    when(() => water.addWater(any(), localId: any(named: 'localId')))
+        .thenAnswer((_) async => ApiResponse<WaterIntakeModel>(success: true, message: '', timestamp: ''));
+
+    await repository.addWater(250);
+
+    final String localId =
+        verify(() => water.addWater(250, localId: captureAny(named: 'localId'))).captured.single as String;
+    expect(localId, matches(uuidPattern));
+    verifyNever(
+      () => syncManager.addToQueue(any(), any(), method: any(named: 'method'), preview: any(named: 'preview')),
+    );
+  });
+
+  test('bağlantı yokken su silme DELETE olarak kuyruğa girer, sunucuya gidilmez', () async {
+    when(() => networkInfo.isConnected).thenAnswer((_) async => false);
+
+    final ApiResponse<void> result = await repository.deleteWaterIntake(9);
+
+    verify(
+      () => syncManager.addToQueue(
+        '/nutrition/water/9',
+        <String, dynamic>{},
+        method: SyncManager.methodDelete,
+        preview: any(named: 'preview'),
+      ),
+    ).called(1);
+    verifyNever(() => water.deleteWaterIntake(any()));
+    expect(result.success, isTrue);
+  });
+
+  test('günün su özetine bekleyen kayıt eklenir, silinmeyi bekleyen çıkar; toplam buna göre', () async {
+    when(() => water.getDailyWaterSummary(any())).thenAnswer(
+      (_) async => ApiResponse<WaterDailySummaryModel>(
+        success: true,
+        message: '',
+        timestamp: '',
+        data: waterDay(500, 3000, <WaterIntakeModel>[serverIntake(9, 200), serverIntake(10, 300)]),
+      ),
+    );
+    when(() => syncManager.pendingRecords()).thenReturn(<PendingRecord>[
+      queuedWater('q1', 250, '2026-09-18'),
+      queuedWater('q2', 100, '2026-09-17'),
+      const PendingRecord(
+        key: 'd1',
+        endpoint: '/nutrition/water/9',
+        method: SyncManager.methodDelete,
+        payload: <String, dynamic>{},
+      ),
+    ]);
+
+    final ApiResponse<WaterDailySummaryModel> result = await repository.getDailyWaterSummary(DateTime(2026, 9, 18));
+
+    final WaterDailySummaryModel day = result.data!;
+    expect(day.totalIntakeMl, 550, reason: '500 − 200 (silinecek) + 250 (bekleyen); başka günün 100 ml’si girmez');
+    expect(day.intakes.map((WaterIntakeModel i) => i.id).toList(), <int>[10, 0]);
+    final WaterIntakeModel pending = day.intakes.last;
+    expect(pending.isPending, isTrue);
+    expect(pending.queueKey, 'q1');
+    expect(pending.amountMl, 250);
+    expect(pending.createdAt, DateTime(2026, 9, 18, 10, 15));
+  });
+
+  test('internetsizken günün özeti yoksa gün kuyruktan kurulur; hedef ve bardaklar son özetten gelir', () async {
+    const CustomGlassModel kupa = CustomGlassModel(id: 7, name: 'Kupa', sizeMl: 350);
+    when(() => syncManager.pendingRecords()).thenReturn(<PendingRecord>[queuedWater('q1', 250, '2026-09-18')]);
+    when(() => networkInfo.isConnected).thenAnswer((_) async => true);
+    when(() => water.getDailyWaterSummary(any())).thenAnswer(
+      (_) async => ApiResponse<WaterDailySummaryModel>(
+        success: true,
+        message: '',
+        timestamp: '',
+        data: waterDay(800, 3000, const <WaterIntakeModel>[], glasses: const <CustomGlassModel>[kupa]),
+      ),
+    );
+    await repository.getDailyWaterSummary(DateTime(2026, 9, 17));
+
+    when(() => networkInfo.isConnected).thenAnswer((_) async => false);
+    when(() => water.getDailyWaterSummary(any()))
+        .thenAnswer((_) async => ApiResponse<WaterDailySummaryModel>.error('Bağlantı yok'));
+
+    final ApiResponse<WaterDailySummaryModel> result = await repository.getDailyWaterSummary(DateTime(2026, 9, 18));
+
+    expect(result.success, isTrue);
+    expect(result.data!.totalIntakeMl, 250);
+    expect(result.data!.targetMl, 3000);
+    expect(result.data!.customGlasses, <CustomGlassModel>[kupa]);
+  });
+
+  test('bağlantı varken su özeti hatası kuyruktan kurulan günle örtülmez', () async {
+    when(() => networkInfo.isConnected).thenAnswer((_) async => true);
+    when(() => water.getDailyWaterSummary(any()))
+        .thenAnswer((_) async => ApiResponse<WaterDailySummaryModel>.error('Sunucu hatası'));
+
+    final ApiResponse<WaterDailySummaryModel> result = await repository.getDailyWaterSummary(DateTime(2026, 9, 18));
+
+    expect(result.success, isFalse);
+    expect(result.message, 'Sunucu hatası');
   });
 }

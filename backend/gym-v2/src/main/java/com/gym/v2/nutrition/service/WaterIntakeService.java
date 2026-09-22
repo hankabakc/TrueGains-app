@@ -21,6 +21,7 @@ import java.time.Clock;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Service
@@ -49,14 +50,32 @@ public class WaterIntakeService {
 		this.clock = clock;
 	}
 
+	/**
+	 * @param localId cihazın kayda verdiği kimlik; aynı kimlik ikinci kez gelirse ilk
+	 * kayıt döner (G-86)
+	 * @param intakeDate internetsiz eklenen kaydın günü; yoksa bugün. Kuyruk sonradan
+	 * gönderilince gün kaymasın diye.
+	 */
 	@Transactional
-	public WaterIntakeResponse addWater(Integer amountMl) {
+	public WaterIntakeResponse addWater(Integer amountMl, String localId, LocalDate intakeDate) {
 		AppUser user = userContextService.getCurrentUser();
+		LocalDate today = LocalDate.now(clock);
+		if (intakeDate != null && intakeDate.isAfter(today)) {
+			throw new BadRequestException("Su kaydının günü gelecekte olamaz.");
+		}
+		if (localId != null) {
+			Optional<WaterIntake> existing = intakeRepository.findByUserIdAndLocalId(user.getId(), localId);
+			if (existing.isPresent()) {
+				return nutritionMapper.toWaterResponse(existing.get());
+			}
+		}
+
 		WaterIntake intake = new WaterIntake();
 		intake.setUser(user);
 		intake.setAmountMl(amountMl);
-		intake.setIntakeDate(LocalDate.now(clock));
+		intake.setIntakeDate(intakeDate != null ? intakeDate : today);
 		intake.setCreatedAt(LocalDateTime.now(clock));
+		intake.setLocalId(localId);
 
 		WaterIntake saved = intakeRepository.save(intake);
 		return nutritionMapper.toWaterResponse(saved);

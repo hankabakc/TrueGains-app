@@ -445,7 +445,8 @@ class _MeasurementsViewState extends State<MeasurementsView> {
     final isSelected = state.selectedIds.contains(m.id);
 
     return Dismissible(
-      key: Key('m_${m.id}'),
+      // Bekleyen ölçümün kimliği yok (G-86); anahtar kuyruk kaydından gelir.
+      key: Key(m.queueKey ?? 'm_${m.id}'),
       direction:
           state.isSelectionMode
               ? DismissDirection.none
@@ -460,8 +461,9 @@ class _MeasurementsViewState extends State<MeasurementsView> {
         padding: const EdgeInsets.only(right: AppSpacing.lg),
         child: const Icon(Icons.delete_outline_rounded, color: AppColors.error),
       ),
-      onDismissed:
-          (_) => context.read<MeasurementBloc>().add(DeleteMeasurement(m.id!)),
+      onDismissed: (_) => context.read<MeasurementBloc>().add(
+            m.isPending ? DiscardPendingMeasurement(m.queueKey!) : DeleteMeasurement(m.id!),
+          ),
       child: GlassContainer(
         margin: const EdgeInsets.only(bottom: AppSpacing.md),
         padding: EdgeInsets.zero,
@@ -473,8 +475,9 @@ class _MeasurementsViewState extends State<MeasurementsView> {
         child: Column(
           children: [
             InkWell(
+              // Koçla paylaşım internet ister (KR13); bekleyen ölçüm seçilemez.
               onTap:
-                  state.isSelectionMode
+                  state.isSelectionMode && !m.isPending
                       ? () => context.read<MeasurementBloc>().add(
                         ToggleMeasurementSelection(m.id!),
                       )
@@ -521,6 +524,16 @@ class _MeasurementsViewState extends State<MeasurementsView> {
                             fontSize: 13,
                           ),
                         ),
+                        // Kuyrukta bekleyen ölçüm: sunucuya internet gelince gider (KR13, G-86).
+                        if (m.isPending) ...[
+                          const SizedBox(width: AppSpacing.xs),
+                          const Icon(Icons.schedule_rounded, size: 12, color: AppColors.textMuted),
+                          const SizedBox(width: AppSpacing.xxs),
+                          Text(
+                            'Bekliyor',
+                            style: AppTextStyles.cardCaption.copyWith(color: AppColors.textMuted, fontSize: 11),
+                          ),
+                        ],
                         if (m.isSharedWithCoach && widget.targetClientId == null) ...[
                           const SizedBox(width: AppSpacing.xs),
                           Container(

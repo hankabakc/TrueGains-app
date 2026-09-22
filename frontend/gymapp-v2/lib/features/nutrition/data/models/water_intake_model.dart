@@ -38,12 +38,18 @@ class WaterIntakeModel extends Equatable {
   final DateTime date;
   final DateTime createdAt;
 
+  /// Kuyrukta bekleyen (sunucuya henüz gitmemiş) kaydın kuyruk anahtarı (G-86); sunucudaki kayıtta null.
+  final String? queueKey;
+
   const WaterIntakeModel({
     required this.id,
     required this.amountMl,
     required this.date,
     required this.createdAt,
+    this.queueKey,
   });
+
+  bool get isPending => queueKey != null;
 
   factory WaterIntakeModel.fromJson(Map<String, dynamic> json) {
     return WaterIntakeModel(
@@ -55,7 +61,7 @@ class WaterIntakeModel extends Equatable {
   }
 
   @override
-  List<Object?> get props => [id, amountMl, date, createdAt];
+  List<Object?> get props => [id, amountMl, date, createdAt, queueKey];
 }
 
 class CustomGlassModel extends Equatable {

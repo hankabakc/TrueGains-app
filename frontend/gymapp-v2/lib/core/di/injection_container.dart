@@ -159,7 +159,7 @@ Future<void> initDependencies() async {
   sl.registerLazySingleton(() => SocialRepository(sl<SocialApiService>()));
   sl.registerLazySingleton(() => ClientGalleryRepository(sl<ClientGalleryApiService>()));
   sl.registerLazySingleton(() => CoachStudentProgressRepository(sl<CoachStudentProgressApiService>()));
-  sl.registerLazySingleton(() => MeasurementRepository(sl<DioClient>()));
+  sl.registerLazySingleton(() => MeasurementRepository(sl<DioClient>(), sl<NetworkInfo>(), sl<SyncManager>()));
   sl.registerLazySingleton(() => DietApiService(sl<DioClient>()));
   sl.registerLazySingleton(() => WaterApiService(sl<DioClient>()));
   sl.registerLazySingleton(() => FoodApiService(sl<DioClient>()));

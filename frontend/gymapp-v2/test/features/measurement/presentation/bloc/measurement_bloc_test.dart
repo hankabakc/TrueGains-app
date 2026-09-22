@@ -294,5 +294,22 @@ void main() {
         verifyNever(() => repository.shareMeasurements(any()));
       },
     );
+
+    blocTest<MeasurementBloc, MeasurementState>(
+      'kuyrukta bekleyen ölçüm sunucuya silme gönderilmeden kuyruktan çıkar ve liste yeniden yüklenir (G-86)',
+      build: () {
+        when(() => repository.discardPending('q1')).thenAnswer((_) async {});
+        when(() => repository.getMyMeasurements(clientId: any(named: 'clientId')))
+            .thenAnswer((_) async => [m1]);
+        return buildBloc();
+      },
+      act: (bloc) => bloc.add(const DiscardPendingMeasurement('q1')),
+      wait: const Duration(milliseconds: 50),
+      verify: (bloc) {
+        verify(() => repository.discardPending('q1')).called(1);
+        verifyNever(() => repository.deleteMeasurement(any()));
+        verify(() => repository.getMyMeasurements(clientId: any(named: 'clientId'))).called(1);
+      },
+    );
   });
 }

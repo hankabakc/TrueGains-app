@@ -3,15 +3,22 @@ package com.gym.v2;
 import com.gym.v2.auth.entity.AppUser;
 import com.gym.v2.auth.entity.ClientEntity;
 import com.gym.v2.auth.entity.UserRole;
+import com.gym.v2.measurement.dto.MeasurementDTO;
+import com.gym.v2.measurement.entity.Measurement;
+import com.gym.v2.measurement.repository.MeasurementRepository;
+import com.gym.v2.measurement.service.MeasurementService;
 import com.gym.v2.nutrition.dto.LogMealItemRequest;
 import com.gym.v2.nutrition.dto.LogMealRequest;
 import com.gym.v2.nutrition.entity.Food;
 import com.gym.v2.nutrition.entity.MealEntry;
 import com.gym.v2.nutrition.entity.MealItem;
 import com.gym.v2.nutrition.entity.MealType;
+import com.gym.v2.nutrition.entity.WaterIntake;
 import com.gym.v2.nutrition.repository.FoodRepository;
 import com.gym.v2.nutrition.repository.MealEntryRepository;
+import com.gym.v2.nutrition.repository.WaterIntakeRepository;
 import com.gym.v2.nutrition.service.MealLogService;
+import com.gym.v2.nutrition.service.WaterIntakeService;
 import com.gym.v2.social.dto.ConversationDTO;
 import com.gym.v2.social.dto.SendMessageRequest;
 import com.gym.v2.social.repository.MessageRepository;
@@ -24,18 +31,24 @@ import com.gym.v2.training.service.WorkoutSessionService;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import java.math.BigDecimal;
+import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
  * Tekrar koruması (G-79): servis, test şeması (entity eşlemesi) ve benzersizlik kısıtı
@@ -63,6 +76,21 @@ class IdempotentWriteIT extends IntegrationTestBase {
 
 	@Autowired
 	private FoodRepository foodRepository;
+
+	@Autowired
+	private WaterIntakeService waterIntakeService;
+
+	@Autowired
+	private WaterIntakeRepository waterIntakeRepository;
+
+	@Autowired
+	private MeasurementService measurementService;
+
+	@Autowired
+	private MeasurementRepository measurementRepository;
+
+	@Autowired
+	private Clock clock;
 
 	@PersistenceContext
 	private EntityManager entityManager;
@@ -240,6 +268,148 @@ class IdempotentWriteIT extends IntegrationTestBase {
 		entry.addItem(duplicate);
 
 		assertThatThrownBy(() -> mealEntryRepository.saveAndFlush(entry))
+			.isInstanceOf(DataIntegrityViolationException.class);
+	}
+
+	// --- G-86: internetsiz su ve ölçüm — tekrar koruması ve kaydın kendi günü/anı ---
+
+	private AppUser clientWithProfile(String email) {
+		AppUser client = createUser(email, UserRole.CLIENT);
+		ClientEntity profile = new ClientEntity();
+		profile.setUser(client);
+		profile.setFullName("Sporcu");
+		clientRepository.saveAndFlush(profile);
+		return client;
+	}
+
+	@Test
+	void water_queuedRequestTwice_isStoredOnceOnItsOwnDay() throws Exception {
+		AppUser client = createUser("idem_water@test.com", UserRole.CLIENT);
+		LocalDate yesterday = LocalDate.now(clock).minusDays(1);
+
+		// Kuyruk isteği uygulamanın gönderdiği biçimde:
+		// /nutrition/water?amountMl=…&localId=…&intakeDate=…
+		for (int i = 0; i < 2; i++) {
+			mockMvc
+				.perform(post("/api/v1/nutrition/water").header("Authorization", bearerTokenFor(client))
+					.param("amountMl", "250")
+					.param("localId", "yerel-su-1")
+					.param("intakeDate", yesterday.toString()))
+				.andExpect(status().isOk());
+		}
+		entityManager.flush();
+		entityManager.clear();
+
+		assertThat(waterIntakeRepository.findByUserIdAndIntakeDate(client.getId(), yesterday))
+			.extracting(WaterIntake::getLocalId)
+			.containsExactly("yerel-su-1");
+	}
+
+	@Test
+	void water_withoutIntakeDate_isStoredOnToday() {
+		AppUser client = createUser("water_today@test.com", UserRole.CLIENT);
+		actingAs(client);
+
+		waterIntakeService.addWater(300, null, null);
+		entityManager.flush();
+		entityManager.clear();
+
+		assertThat(waterIntakeRepository.findByUserIdAndIntakeDate(client.getId(), LocalDate.now(clock))).hasSize(1);
+	}
+
+	@Test
+	void water_futureIntakeDate_isRejectedAndNothingStored() throws Exception {
+		AppUser client = createUser("water_future@test.com", UserRole.CLIENT);
+		LocalDate tomorrow = LocalDate.now(clock).plusDays(1);
+
+		mockMvc
+			.perform(post("/api/v1/nutrition/water").header("Authorization", bearerTokenFor(client))
+				.param("amountMl", "250")
+				.param("intakeDate", tomorrow.toString()))
+			.andExpect(status().isBadRequest());
+
+		assertThat(waterIntakeRepository.findByUserIdAndIntakeDate(client.getId(), tomorrow)).isEmpty();
+	}
+
+	@Test
+	void water_nonPositiveAmount_isRejectedAndNothingStored() throws Exception {
+		AppUser client = createUser("water_negative@test.com", UserRole.CLIENT);
+
+		mockMvc
+			.perform(post("/api/v1/nutrition/water").header("Authorization", bearerTokenFor(client))
+				.param("amountMl", "-500"))
+			.andExpect(status().isBadRequest());
+
+		assertThat(waterIntakeRepository.findByUserIdAndIntakeDate(client.getId(), LocalDate.now(clock))).isEmpty();
+	}
+
+	@Test
+	void database_rejectsDuplicateWaterLocalIdForSameUser() {
+		AppUser client = createUser("water_db@test.com", UserRole.CLIENT);
+		WaterIntake first = new WaterIntake(client, 250, LocalDate.of(2026, 9, 17));
+		first.setLocalId("yerel-su-db");
+		waterIntakeRepository.saveAndFlush(first);
+
+		WaterIntake second = new WaterIntake(client, 250, LocalDate.of(2026, 9, 17));
+		second.setLocalId("yerel-su-db");
+
+		assertThatThrownBy(() -> waterIntakeRepository.saveAndFlush(second))
+			.isInstanceOf(DataIntegrityViolationException.class);
+	}
+
+	@Test
+	void measurement_queuedRequestTwice_isStoredOnceWithItsOwnTime() throws Exception {
+		AppUser client = clientWithProfile("idem_measure@test.com");
+		Instant measuredAt = Instant.parse("2026-09-17T06:30:00Z");
+		String body = objectMapper
+			.writeValueAsString(Map.of("weight", 72.5, "createdAt", measuredAt.toString(), "localId", "yerel-olcum-1"));
+
+		for (int i = 0; i < 2; i++) {
+			mockMvc
+				.perform(post("/api/v1/measurements").header("Authorization", bearerTokenFor(client))
+					.contentType(MediaType.APPLICATION_JSON)
+					.content(body))
+				.andExpect(status().isOk());
+		}
+		entityManager.flush();
+		entityManager.clear();
+
+		List<Measurement> saved = measurementRepository
+			.findByUser_ExternalIdOrderByCreatedAtDesc(client.getExternalId(), PageRequest.of(0, 10))
+			.getContent();
+		assertThat(saved).extracting(Measurement::getLocalId).containsExactly("yerel-olcum-1");
+		assertThat(saved.getFirst().getCreatedAt()).isEqualTo(measuredAt);
+	}
+
+	@Test
+	void measurement_withoutCreatedAt_isStampedByClock() {
+		AppUser client = clientWithProfile("measure_clock@test.com");
+		actingAs(client);
+		MeasurementDTO request = new MeasurementDTO(null, new BigDecimal("72.5"), null, null, null, null, null, null,
+				null, null, null, null, null, null, null, null, null);
+
+		Instant before = clock.instant();
+		MeasurementDTO saved = measurementService.addMeasurement(request);
+		Instant after = clock.instant();
+
+		assertThat(saved.createdAt()).isBetween(before, after);
+	}
+
+	@Test
+	void database_rejectsDuplicateMeasurementLocalIdForSameUser() {
+		AppUser client = createUser("measure_db@test.com", UserRole.CLIENT);
+		Measurement first = new Measurement();
+		first.setUser(client);
+		first.setCreatedAt(Instant.parse("2026-09-17T06:30:00Z"));
+		first.setLocalId("yerel-olcum-db");
+		measurementRepository.saveAndFlush(first);
+
+		Measurement second = new Measurement();
+		second.setUser(client);
+		second.setCreatedAt(Instant.parse("2026-09-17T06:30:00Z"));
+		second.setLocalId("yerel-olcum-db");
+
+		assertThatThrownBy(() -> measurementRepository.saveAndFlush(second))
 			.isInstanceOf(DataIntegrityViolationException.class);
 	}
 

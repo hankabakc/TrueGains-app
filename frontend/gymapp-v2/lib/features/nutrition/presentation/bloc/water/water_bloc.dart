@@ -53,6 +53,14 @@ class DeleteWaterIntake extends WaterEvent {
   List<Object?> get props => [id];
 }
 
+/// Sunucuya hiç gitmemiş (kuyrukta bekleyen) su kaydının silinmesi (G-86).
+class DiscardPendingWaterIntake extends WaterEvent {
+  final String queueKey;
+  const DiscardPendingWaterIntake(this.queueKey);
+  @override
+  List<Object?> get props => [queueKey];
+}
+
 // State
 abstract class WaterState extends Equatable {
   const WaterState();
@@ -92,6 +100,15 @@ class WaterBloc extends Bloc<WaterEvent, WaterState> {
     on<AddCustomGlass>(_onAddCustomGlass);
     on<DeleteCustomGlass>(_onDeleteCustomGlass);
     on<DeleteWaterIntake>(_onDeleteWaterIntake);
+    on<DiscardPendingWaterIntake>(_onDiscardPending);
+  }
+
+  Future<void> _onDiscardPending(
+    DiscardPendingWaterIntake event,
+    Emitter<WaterState> emit,
+  ) async {
+    await _repository.discardPendingWater(event.queueKey);
+    add(const LoadWaterSummary());
   }
 
   Future<void> _onLoadSummary(

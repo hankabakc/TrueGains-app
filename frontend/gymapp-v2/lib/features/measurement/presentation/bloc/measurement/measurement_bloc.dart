@@ -10,6 +10,7 @@ class MeasurementBloc extends Bloc<MeasurementEvent, MeasurementState> {
   MeasurementBloc(this._repository) : super(MeasurementInitial()) {
     on<LoadMeasurements>(_onLoadMeasurements);
     on<DeleteMeasurement>(_onDeleteMeasurement);
+    on<DiscardPendingMeasurement>(_onDiscardPending);
     on<ToggleSelectionMode>(_onToggleSelectionMode);
     on<ToggleMeasurementSelection>(_onToggleMeasurementSelection);
     on<ShareSelectedMeasurements>(_onShareSelectedMeasurements);
@@ -46,6 +47,14 @@ class MeasurementBloc extends Bloc<MeasurementEvent, MeasurementState> {
         emit(MeasurementError(friendlyError(e)));
       }
     }
+  }
+
+  Future<void> _onDiscardPending(
+    DiscardPendingMeasurement event,
+    Emitter<MeasurementState> emit,
+  ) async {
+    await _repository.discardPending(event.queueKey);
+    add(const LoadMeasurements());
   }
 
   void _onToggleSelectionMode(

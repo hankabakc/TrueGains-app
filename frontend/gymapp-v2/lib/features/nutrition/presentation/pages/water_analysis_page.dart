@@ -16,7 +16,8 @@ class WaterAnalysisPage extends StatelessWidget {
   final WaterLoaded state;
   const WaterAnalysisPage({super.key, required this.state});
 
-  void _confirmDeleteIntake(BuildContext context, int id, int amountMl) {
+  void _confirmDeleteIntake(BuildContext context, WaterIntakeModel log) {
+    final int amountMl = log.amountMl;
     showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -43,7 +44,10 @@ class WaterAnalysisPage extends StatelessWidget {
           TextButton(
             onPressed: () {
               Navigator.pop(ctx);
-              context.read<WaterBloc>().add(DeleteWaterIntake(id));
+              // G-86: sunucuya hiç gitmemiş kayıt yalnızca kuyruktan çıkar.
+              context.read<WaterBloc>().add(
+                    log.isPending ? DiscardPendingWaterIntake(log.queueKey!) : DeleteWaterIntake(log.id),
+                  );
             },
             child: Text(
               'SİL',
@@ -358,13 +362,27 @@ class WaterAnalysisPage extends StatelessWidget {
                     '${log.createdAt.hour.toString().padLeft(2, '0')}:${log.createdAt.minute.toString().padLeft(2, '0')}',
                     style: AppTextStyles.cardCaption.copyWith(color: AppColors.textSecondary, fontSize: 13),
                   ),
+                  // Kuyrukta bekleyen kayıt: sunucuya internet gelince gider (KR13, G-86).
+                  if (log.isPending)
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.schedule_rounded, size: 14, color: AppColors.textMuted),
+                        const SizedBox(width: AppSpacing.xxs),
+                        Text(
+                          'Bekliyor',
+                          style: AppTextStyles.cardCaption.copyWith(color: AppColors.textMuted, fontSize: 11),
+                        ),
+                      ],
+                    ),
                   Text(
                     '${log.amountMl} ml',
                     style: AppTextStyles.listTitle.copyWith(color: AppColors.textPrimary, fontSize: 13),
                   ),
                   IconButton(
+                    tooltip: 'Sil',
                     icon: const Icon(Icons.delete_outline_rounded, color: AppColors.error, size: 18),
-                    onPressed: () => _confirmDeleteIntake(context, log.id, log.amountMl),
+                    onPressed: () => _confirmDeleteIntake(context, log),
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(),
                   ),

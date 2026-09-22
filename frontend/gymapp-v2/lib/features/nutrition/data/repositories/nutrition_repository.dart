@@ -448,14 +448,106 @@ class NutritionRepository {
 
   // --- Water Intake ---
 
-  Future<ApiResponse<WaterIntakeModel>> addWater(int amountMl) {
-    return _waterService.addWater(amountMl);
+  Future<ApiResponse<WaterIntakeModel>> addWater(int amountMl) async {
+    // Tekrar koruması (G-86): kayıt cihazda kimlik alır; çevrimiçi ve kuyruk yolu aynı kimliği taşır.
+    final String localId = const Uuid().v4();
+    if (await _networkInfo.isConnected) {
+      return _waterService.addWater(amountMl, localId: localId);
+    }
+
+    // KR13 (G-86): bağlantı yoksa kayıt kuyruğa girer; gün eklendiği anın günüdür, gönderim anının değil.
+    final DateTime now = DateTime.now();
+    await _syncManager.addToQueue(
+      WaterApiService.addWaterEndpoint(amountMl, localId, now.toIso8601String().split('T')[0]),
+      <String, dynamic>{},
+      preview: <Map<String, dynamic>>[
+        <String, dynamic>{'createdAt': now.toIso8601String()},
+      ],
+    );
+    return ApiResponse<WaterIntakeModel>(
+      success: true,
+      message: 'Bağlantı yok. Su kaydı internet geldiğinde kaydedilecek.',
+      timestamp: now.toIso8601String(),
+    );
   }
+
+  /// Son başarılı günlük su özeti; internetsiz kurulan günde hedef ve özel bardaklar buradan gelir (G-86).
+  WaterDailySummaryModel? _lastWaterSummary;
+
+  /// Sunucudaki varsayılan su hedefi (`WaterIntakeService`, hedef tanımlanmamışsa).
+  static const int _defaultWaterTargetMl = 2500;
 
   Future<ApiResponse<WaterDailySummaryModel>> getDailyWaterSummary([
     DateTime? date,
-  ]) {
-    return _waterService.getDailyWaterSummary(date);
+  ]) async {
+    final DateTime day = date ?? DateTime.now();
+    final ApiResponse<WaterDailySummaryModel> res = await _waterService.getDailyWaterSummary(day);
+    if (res.success && res.data != null) _lastWaterSummary = res.data;
+    final WaterDailySummaryModel? summary =
+        (res.success && res.data != null) ? res.data : await _offlineWaterDay();
+    if (summary == null) return res;
+    return ApiResponse<WaterDailySummaryModel>(
+      success: true,
+      message: res.message,
+      timestamp: res.timestamp,
+      data: _withQueuedWater(summary, day),
+    );
+  }
+
+  /// G-86: internetsizken o günün özeti önbellekte yoksa boş gün kurulur; hedef ve özel bardaklar son özetten.
+  // ponytail: uygulama internetsiz ilk açılışta hedefi bilmez, sunucu varsayılanı gösterilir; internet gelince düzelir.
+  Future<WaterDailySummaryModel?> _offlineWaterDay() async {
+    if (await _networkInfo.isConnected) return null;
+    return WaterDailySummaryModel(
+      totalIntakeMl: 0,
+      targetMl: _lastWaterSummary?.targetMl ?? _defaultWaterTargetMl,
+      intakes: const <WaterIntakeModel>[],
+      customGlasses: _lastWaterSummary?.customGlasses ?? const <CustomGlassModel>[],
+    );
+  }
+
+  /// Kuyruktaki su kayıtlarını güne yansıtır (KR13, G-86): o güne eklenen bekleyen kayıt listeye ve toplama girer,
+  /// silinmeyi bekleyen kayıt listeden ve toplamdan çıkar.
+  WaterDailySummaryModel _withQueuedWater(WaterDailySummaryModel summary, DateTime day) {
+    final String dateStr = day.toIso8601String().split('T')[0];
+    final List<PendingRecord> queued = _syncManager.pendingRecords();
+    const String deletePrefix = '${WaterApiService.waterPath}/';
+    final Set<int> deletedIds = <int>{
+      for (final PendingRecord r in queued)
+        if (r.method == SyncManager.methodDelete && r.endpoint.startsWith(deletePrefix))
+          int.tryParse(r.endpoint.substring(deletePrefix.length)) ?? -1,
+    };
+    final List<WaterIntakeModel> kept =
+        summary.intakes.where((WaterIntakeModel i) => !deletedIds.contains(i.id)).toList();
+    final int removedMl = summary.intakes
+        .where((WaterIntakeModel i) => deletedIds.contains(i.id))
+        .fold(0, (int sum, WaterIntakeModel i) => sum + i.amountMl);
+
+    final List<WaterIntakeModel> pending = <WaterIntakeModel>[];
+    for (final PendingRecord r in queued) {
+      if (r.method != SyncManager.methodPost) continue;
+      final Uri uri = Uri.parse(r.endpoint);
+      if (uri.path != WaterApiService.waterPath || uri.queryParameters['intakeDate'] != dateStr) continue;
+      final int? amountMl = int.tryParse(uri.queryParameters['amountMl'] ?? '');
+      if (amountMl == null) continue;
+      pending.add(WaterIntakeModel(
+        id: 0,
+        amountMl: amountMl,
+        date: day,
+        createdAt: DateTime.tryParse(r.preview.isEmpty ? '' : (r.preview.first['createdAt'] as String? ?? '')) ?? day,
+        queueKey: r.key,
+      ));
+    }
+    if (deletedIds.isEmpty && pending.isEmpty) return summary;
+
+    return WaterDailySummaryModel(
+      totalIntakeMl: summary.totalIntakeMl -
+          removedMl +
+          pending.fold(0, (int sum, WaterIntakeModel i) => sum + i.amountMl),
+      targetMl: summary.targetMl,
+      intakes: <WaterIntakeModel>[...kept, ...pending],
+      customGlasses: summary.customGlasses,
+    );
   }
 
   Future<ApiResponse<List<WaterDailyTotalModel>>> getWaterRangeSummary(
@@ -480,8 +572,27 @@ class NutritionRepository {
     return _waterService.deleteCustomGlass(id);
   }
 
-  Future<ApiResponse<void>> deleteWaterIntake(int id) {
-    return _waterService.deleteWaterIntake(id);
+  Future<ApiResponse<void>> deleteWaterIntake(int id) async {
+    if (await _networkInfo.isConnected) {
+      return _waterService.deleteWaterIntake(id);
+    }
+
+    // KR13 (G-86): bağlantı yoksa silme kuyruğa girer; özet kaydı hemen gizler.
+    await _syncManager.addToQueue(
+      '${WaterApiService.waterPath}/$id',
+      <String, dynamic>{},
+      method: SyncManager.methodDelete,
+    );
+    return ApiResponse<void>(
+      success: true,
+      message: 'Bağlantı yok. Silme internet geldiğinde sunucuya iletilecek.',
+      timestamp: DateTime.now().toIso8601String(),
+    );
+  }
+
+  /// Sunucuya henüz gitmemiş su kaydını kuyruktan çıkarır; kullanıcı onayıyla çağrılır (G-86).
+  Future<void> discardPendingWater(String queueKey) {
+    return _syncManager.discard(queueKey);
   }
 
   // --- Analytics & Dashboard ---

@@ -213,6 +213,24 @@ public class GlobalExceptionHandler {
 	}
 
 	/**
+	 * İstek parametresi kısıt ihlali (400 Bad Request): {@code @Validated} denetleyicide
+	 * {@code @RequestParam} üzerindeki {@code @Min}/{@code @Size} gibi kısıtlar.
+	 * <p>
+	 * Bu yakalayıcı olmadan {@code ConstraintViolationException} genel
+	 * {@code RuntimeException} yakalayıcısına düşüp <b>500</b> dönüyordu (G-86'da
+	 * {@code /nutrition/water?amountMl=-500} ile görüldü). İleti istemciye iç bilgi
+	 * (metot/parametre adı) taşımasın diye genel tutulur; ayrıntı loga yazılır.
+	 * </p>
+	 */
+	@ExceptionHandler({ jakarta.validation.ConstraintViolationException.class,
+			org.springframework.web.method.annotation.HandlerMethodValidationException.class })
+	@ResponseStatus(HttpStatus.BAD_REQUEST)
+	public ApiResponse<Void> handleParameterConstraint(Exception ex, jakarta.servlet.http.HttpServletRequest request) {
+		log.warn("[PARAMETER VALIDATION] {} {} → {}", request.getMethod(), request.getRequestURI(), ex.getMessage());
+		return ApiResponse.error("İstek parametreleri eksik veya hatalı.", clock.instant());
+	}
+
+	/**
 	 * Tanımsız yol (404 Not Found).
 	 * <p>
 	 * Bu yakalayıcı olmadan {@code NoResourceFoundException} aşağıdaki genel
