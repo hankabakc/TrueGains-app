@@ -56,6 +56,13 @@ public class TrainingBlock {
 	@Column(name = "local_id", length = 36)
 	private String localId;
 
+	/**
+	 * Son uygulanan düzenlemenin cihaz kimliği (K2-09): tekrar gelen düzenleme ikinci kez
+	 * yazılmaz.
+	 */
+	@Column(name = "last_edit_id", length = 36)
+	private String lastEditId;
+
 	@Version
 	private Long version;
 
@@ -200,6 +207,14 @@ public class TrainingBlock {
 
 	public void setLocalId(String localId) {
 		this.localId = localId;
+	}
+
+	public String getLastEditId() {
+		return lastEditId;
+	}
+
+	public void setLastEditId(String lastEditId) {
+		this.lastEditId = lastEditId;
 	}
 
 	public Long getVersion() {

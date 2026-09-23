@@ -116,7 +116,7 @@ public class TrainingIntegrationTest {
 		WorkoutDayDTO dayDto = new WorkoutDayDTO(dayId, "Day 1", 1, true, List.of(d1, d2));
 		TrainingBlockDTO request = new TrainingBlockDTO(blockId, "Updated Program", "Desc", null, null, client.getId(),
 				null, LocalDate.now(), LocalDate.now().plusMonths(1), true, 4, List.of(dayDto), true, false, false,
-				null, null);
+				null, null, null);
 
 		System.out.println("🔄 [TEST] UpdatePersonalProgram çağrılıyor...");
 		trainingService.updatePersonalProgram(blockId, request);

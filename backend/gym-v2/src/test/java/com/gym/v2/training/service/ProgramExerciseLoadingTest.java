@@ -120,7 +120,7 @@ class ProgramExerciseLoadingTest {
 		WorkoutDayDTO secondDay = new WorkoutDayDTO(null, "Gun 2", 2, true,
 				List.of(exerciseDto(12L, 0), exerciseDto(10L, 1)));
 		return new TrainingBlockDTO(null, "Program", "Aciklama", null, null, null, null, LocalDate.of(2026, 1, 1), null,
-				null, 4, List.of(firstDay, secondDay), null, null, null, null, null);
+				null, 4, List.of(firstDay, secondDay), null, null, null, null, null, null);
 	}
 
 	@Test

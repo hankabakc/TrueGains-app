@@ -50,5 +50,9 @@ public record TrainingBlockDTO(@JsonProperty("id") Long id,
 		@JsonProperty("version") Long version,
 
 		@JsonProperty("local_id") @Size(max = 36,
-				message = "Yerel kimlik en fazla 36 karakter olabilir.") String localId) {
+				message = "Yerel kimlik en fazla 36 karakter olabilir.") String localId,
+
+		/* K2-09: düzenleme isteğinin cihaz kimliği; yanıtta dolmaz. */
+		@JsonProperty("edit_id") @Size(max = 36,
+				message = "Düzenleme kimliği en fazla 36 karakter olabilir.") String editId) {
 }

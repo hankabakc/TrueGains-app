@@ -260,6 +260,32 @@ void main() {
     verifyNever(() => syncManager.addToQueue(any(), any(), method: any(named: 'method')));
   });
 
+  test('bağlantı yokken kuyruğa giren düzenleme düzenleme kimliği taşır', () async {
+    when(() => networkInfo.isConnected).thenAnswer((_) async => false);
+
+    await repository.updatePersonalProgram(7, program(id: 7, name: 'Yeni', version: 3));
+
+    final List<dynamic> captured = verify(
+      () => syncManager.addToQueue(captureAny(), captureAny(), method: captureAny(named: 'method')),
+    ).captured;
+    final Map<String, dynamic> payload = captured[1] as Map<String, dynamic>;
+    expect(payload['edit_id'], matches(r'^[0-9a-f]{8}-[0-9a-f]{4}-'));
+  });
+
+  test('birleşen düzenleme yeni düzenleme kimliği alır', () async {
+    when(() => networkInfo.isConnected).thenAnswer((_) async => false);
+    when(() => syncManager.pendingRecords()).thenReturn(<PendingRecord>[
+      queued('k7', '$programs/7', SyncManager.methodPut, <String, dynamic>{'name': 'İlk', 'version': 3, 'edit_id': 'E1'}),
+    ]);
+
+    await repository.updatePersonalProgram(7, program(id: 7, name: 'İkinci', version: 4));
+
+    final Map<String, dynamic> payload =
+        verify(() => syncManager.replacePayload('k7', captureAny())).captured.single as Map<String, dynamic>;
+    expect(payload['edit_id'], matches(r'^[0-9a-f]{8}-[0-9a-f]{4}-'));
+    expect(payload['edit_id'], isNot('E1'));
+  });
+
   test('bağlantı yokken silme kuyruğa girer', () async {
     when(() => networkInfo.isConnected).thenAnswer((_) async => false);
 

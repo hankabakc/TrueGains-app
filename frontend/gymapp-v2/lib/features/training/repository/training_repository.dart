@@ -168,7 +168,9 @@ class TrainingRepository {
     TrainingBlock block,
   ) async {
     final String path = '${TrainingApiService.personalProgramsPath}/$id';
-    final Map<String, dynamic> payload = block.toJson();
+    // K2-09: her düzenleme yeni bir kimlik taşır; yanıtı kaybolup yeniden gönderilen düzenlemeyi sunucu uygulanmış sayar.
+    // Birleşen düzenleme de yenisini alır: eskisi kalsaydı sunucu yeni değişikliği "zaten uygulandı" sayıp atardı.
+    final Map<String, dynamic> payload = <String, dynamic>{...block.toJson(), 'edit_id': const Uuid().v4()};
 
     final PendingRecord? queued = _queuedEditOf(path);
     if (queued != null) {

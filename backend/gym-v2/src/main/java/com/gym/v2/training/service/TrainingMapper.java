@@ -40,6 +40,7 @@ public interface TrainingMapper {
 	@Mapping(target = "clientName", ignore = true)
 	@Mapping(target = "isPersonal",
 			expression = "java(trainingBlock.getCoach() == null && !trainingBlock.getIsTemplate())")
+	@Mapping(target = "editId", ignore = true)
 	TrainingBlockDTO toTrainingBlockDTO(TrainingBlock trainingBlock);
 
 	List<TrainingBlockDTO> toTrainingBlockDTOList(List<TrainingBlock> trainingBlocks);

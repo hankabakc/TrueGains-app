@@ -18,11 +18,9 @@ import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
-import org.springframework.security.core.context.SecurityContextHolder;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -49,15 +47,6 @@ class OfflineProgramWorkoutIT extends IntegrationTestBase {
 
 	@PersistenceContext
 	private EntityManager entityManager;
-
-	/**
-	 * Önceki bir test sınıfının iş parçacığında bıraktığı kimlik JWT filtresini atlatır
-	 * (filtre bağlamda kimlik varsa jetona bakmıyor) ve ilk istek yetkisiz kalır.
-	 */
-	@BeforeEach
-	void clearLeakedAuthentication() {
-		SecurityContextHolder.clearContext();
-	}
 
 	private Exercise savedExercise() {
 		Exercise exercise = new Exercise();

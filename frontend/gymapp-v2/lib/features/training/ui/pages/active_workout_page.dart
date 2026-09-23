@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
@@ -50,12 +51,7 @@ class _ActiveWorkoutPageState extends State<ActiveWorkoutPage> {
     // Aynı gün panelden yeniden seçildiğinde mevcut yarım antrenmanın setleri sıfırlanmamalıdır.
     final bool isSameOngoingDay = bloc.state.status != ActiveWorkoutStatus.finished &&
         currentDay != null &&
-        (currentDay.id == widget.workoutDay.id ||
-            (currentDay.id < 0 &&
-                currentDay.dayOrder == widget.workoutDay.dayOrder &&
-                (bloc.state.trainingBlockId == null ||
-                    bloc.state.trainingBlockId == 0 ||
-                    bloc.state.trainingBlockId == widget.trainingBlockId)));
+        (currentDay.id == widget.workoutDay.id || (currentDay.id < 0 && _isSyncedCopy(currentDay, widget.workoutDay)));
 
     if (!isSameOngoingDay) {
       bloc.add(
@@ -66,6 +62,14 @@ class _ActiveWorkoutPageState extends State<ActiveWorkoutPage> {
         ),
       );
     }
+  }
+
+  /// K1-08: internetsiz oluşturulan programın günü sunucuya gidince gerçek kimlik alır; sırası ve egzersizleri aynıysa
+  /// yarım antrenmanın günüdür. Yalnız sıraya bakılırsa başka programın aynı günü yarım antrenmanı açar.
+  // ponytail: yapısal eşleşme; gün antrenman sürerken başka cihazda düzenlenirse eşleşmez ve yeni antrenman başlar.
+  static bool _isSyncedCopy(WorkoutDay current, WorkoutDay requested) {
+    List<int> catalogIds(WorkoutDay day) => day.exercises.map((WorkoutExercise e) => e.exerciseId).toList()..sort();
+    return current.dayOrder == requested.dayOrder && listEquals(catalogIds(current), catalogIds(requested));
   }
 
   @override
