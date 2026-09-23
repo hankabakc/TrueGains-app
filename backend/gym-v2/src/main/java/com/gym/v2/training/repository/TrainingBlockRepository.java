@@ -45,4 +45,7 @@ public interface TrainingBlockRepository extends JpaRepository<TrainingBlock, Lo
 
 	List<TrainingBlock> findByTemplateIdAndIsTemplateFalse(Long templateId);
 
+	/** Tekrar koruması (G-74): arama programın sahibi sporcuyla sınırlı. */
+	Optional<TrainingBlock> findByClientIdAndLocalId(Long clientId, String localId);
+
 }

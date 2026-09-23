@@ -11,6 +11,9 @@ class TrainingApiService {
   /// Antrenman oturumu ucu; çevrimdışı kuyruk da aynı sabiti kullanır (K4-09).
   static const String sessionsPath = '/training/sessions';
 
+  /// Kişisel program ucu; çevrimdışı kuyruk da aynı sabiti kullanır (G-74).
+  static const String personalProgramsPath = '/training/programs/personal';
+
   final DioClient _dioClient;
 
   TrainingApiService(this._dioClient);
@@ -50,7 +53,7 @@ class TrainingApiService {
   ) async {
     try {
       final response = await _dioClient.dio.post<Map<String, dynamic>>(
-        '/training/programs/personal',
+        personalProgramsPath,
         data: data,
       );
       return ApiResponse<TrainingBlock>.fromJson(
@@ -86,7 +89,7 @@ class TrainingApiService {
   ) async {
     try {
       final response = await _dioClient.dio.put<Map<String, dynamic>>(
-        '/training/programs/personal/$id',
+        '$personalProgramsPath/$id',
         data: data,
       );
       return ApiResponse<TrainingBlock>.fromJson(
@@ -128,7 +131,7 @@ class TrainingApiService {
   Future<ApiResponse<void>> deletePersonalProgram(int id) async {
     try {
       final response = await _dioClient.dio.delete<Map<String, dynamic>>(
-        '/training/programs/personal/$id',
+        '$personalProgramsPath/$id',
       );
       return ApiResponse<void>.fromJson(response.data!, (json) {});
     } on DioException catch (e) {

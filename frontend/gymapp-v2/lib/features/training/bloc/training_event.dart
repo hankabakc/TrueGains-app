@@ -35,10 +35,14 @@ class LogWorkoutSet extends TrainingEvent {
 
 class DeleteProgram extends TrainingEvent {
   final int id;
-  const DeleteProgram(this.id);
+
+  /// Henüz sunucuya gitmemiş (id 0) programın cihaz kimliği (G-74).
+  final String? localId;
+
+  const DeleteProgram(this.id, {this.localId});
 
   @override
-  List<Object?> get props => [id];
+  List<Object?> get props => [id, localId];
 }
 
 class LoadCoachTemplates extends TrainingEvent {

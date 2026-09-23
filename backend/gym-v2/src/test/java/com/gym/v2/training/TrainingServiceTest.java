@@ -151,7 +151,8 @@ public class TrainingServiceTest {
 
 		WorkoutDayDTO dayDto = new WorkoutDayDTO(100L, "Day 1", 1, true, List.of(weDto1, weDto2));
 		TrainingBlockDTO request = new TrainingBlockDTO(programId, "Program", "Desc", null, null, clientId, null,
-				LocalDate.now(), LocalDate.now().plusMonths(1), true, 4, List.of(dayDto), true, false, false);
+				LocalDate.now(), LocalDate.now().plusMonths(1), true, 4, List.of(dayDto), true, false, false, null,
+				null);
 
 		trainingService.updatePersonalProgram(programId, request);
 

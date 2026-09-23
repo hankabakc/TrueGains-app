@@ -10,7 +10,8 @@ import java.util.List;
  * bir mesocycle (orta vadeli plan) olarak koçun stratejisini tutar.
  */
 @Entity
-@Table(name = "training_blocks")
+@Table(name = "training_blocks", uniqueConstraints = @UniqueConstraint(name = "uq_training_blocks_client_local",
+		columnNames = { "client_id", "local_id" }))
 public class TrainingBlock {
 
 	@Id
@@ -48,6 +49,12 @@ public class TrainingBlock {
 
 	@Column(name = "template_id")
 	private Long templateId; // Bu programın türetildiği şablonun ID'si
+
+	/**
+	 * Cihazın verdiği kimlik (G-74): internetsiz oluşturulan program ikinci kez yazılmaz.
+	 */
+	@Column(name = "local_id", length = 36)
+	private String localId;
 
 	@Version
 	private Long version;
@@ -185,6 +192,14 @@ public class TrainingBlock {
 
 	public void setTemplateId(Long templateId) {
 		this.templateId = templateId;
+	}
+
+	public String getLocalId() {
+		return localId;
+	}
+
+	public void setLocalId(String localId) {
+		this.localId = localId;
 	}
 
 	public Long getVersion() {

@@ -41,5 +41,14 @@ public record TrainingBlockDTO(@JsonProperty("id") Long id,
 				message = "Bir programda en fazla 31 gün olabilir.") List<WorkoutDayDTO> workoutDays,
 
 		@JsonProperty("is_personal") Boolean isPersonal, @JsonProperty("is_template") Boolean isTemplate,
-		@JsonProperty("is_orphaned") Boolean isOrphaned) {
+		@JsonProperty("is_orphaned") Boolean isOrphaned,
+
+		/*
+		 * G-74 (KR13): istemci düzenlemeye başladığı sürümü geri gönderir; sunucuda o
+		 * arada değiştiyse güncelleme reddedilir. Yanıtta programın güncel sürümüdür.
+		 */
+		@JsonProperty("version") Long version,
+
+		@JsonProperty("local_id") @Size(max = 36,
+				message = "Yerel kimlik en fazla 36 karakter olabilir.") String localId) {
 }

@@ -5,6 +5,7 @@ import com.gym.v2.auth.repository.AppUserRepository;
 import com.gym.v2.auth.repository.ClientRepository;
 import com.gym.v2.auth.entity.UserRole;
 import com.gym.v2.core.exception.BadRequestException;
+import com.gym.v2.core.exception.ConflictException;
 import com.gym.v2.core.exception.NotFoundException;
 import com.gym.v2.core.security.SecurityUtils;
 import com.gym.v2.core.service.NotificationService;
@@ -101,11 +102,23 @@ public class TrainingBlockService {
 			throw new BadRequestException("Programın başlangıç tarihi zorunludur.");
 		}
 
+		// Tekrar koruması (G-74, KR13): kuyruktan ya da zaman aşımında yeniden gelen
+		// istek ikinci program açmaz, ilk kaydı döner. Arama programın sahibi sporcuyla
+		// sınırlı; başkasının kimliği yeni program açar.
+		if (request.localId() != null) {
+			Optional<TrainingBlock> existing = blockRepository.findByClientIdAndLocalId(clientUser.getId(),
+					request.localId());
+			if (existing.isPresent()) {
+				return trainingMapper.toTrainingBlockDTO(existing.get());
+			}
+		}
+
 		TrainingBlock block = new TrainingBlock();
 		block.setName(request.name());
 		block.setDescription(request.description());
 		block.setCoach(coachUser);
 		block.setClient(clientUser);
+		block.setLocalId(request.localId());
 		block.setStartDate(request.startDate());
 		block.setDurationWeeks(request.durationWeeks() != null ? request.durationWeeks() : 4);
 		block.setEndDate(request.startDate().plusWeeks(block.getDurationWeeks()));
@@ -136,6 +149,15 @@ public class TrainingBlockService {
 
 		if (!isAuthorized) {
 			throw new BadRequestException("Bu programı güncelleme yetkiniz yok.");
+		}
+
+		// KR13 (G-74): istemci düzenlemeye başladığı sürümü gönderir. Sürüm o arada
+		// değiştiyse (başka cihaz) sunucudaki hâl geçerli; istek reddedilir, çevrimdışı
+		// kuyruk kaydı silmeden "aktarılamadı" gösterir. Sürüm göndermeyen eski istemci
+		// eskisi gibi yazar.
+		if (request.version() != null && !request.version().equals(block.getVersion())) {
+			throw new ConflictException(
+					"Program başka bir cihazda değiştirilmiş; sunucudaki hâli geçerli. Programı yenileyip tekrar düzenleyin.");
 		}
 
 		block.setName(request.name());

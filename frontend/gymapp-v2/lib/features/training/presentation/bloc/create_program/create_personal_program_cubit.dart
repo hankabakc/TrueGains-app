@@ -28,6 +28,8 @@ class CreatePersonalProgramCubit extends Cubit<CreatePersonalProgramState> {
         isTemplate: initialBlock.isTemplate,
         editingProgramId: initialBlock.id,
         durationWeeks: initialBlock.durationWeeks,
+        editingLocalId: initialBlock.localId,
+        editingVersion: initialBlock.version,
         status: CreatePersonalProgramStatus.initial,
       ));
     } else {
@@ -480,6 +482,8 @@ class CreatePersonalProgramCubit extends Cubit<CreatePersonalProgramState> {
         isTemplate: state.isTemplate,
         workoutDays: finalDays,
         durationWeeks: state.durationWeeks,
+        version: state.editingVersion,
+        localId: state.editingLocalId,
       );
 
       if (effectiveId != 0) {

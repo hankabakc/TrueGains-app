@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:gymapp_v2/core/util/app_logger.dart';
 import 'package:gymapp_v2/core/di/injection_container.dart';
@@ -9,7 +10,14 @@ import 'training_state.dart';
 class TrainingBloc extends Bloc<TrainingEvent, TrainingState> {
   final TrainingRepository _repository;
 
-  TrainingBloc(this._repository) : super(const TrainingState()) {
+  /// Çevrimdışı kuyruk bir tur gönderim yapınca tetiklenir (G-74): liste sunucunun verdiği hâle (program sürümü)
+  /// tazelenir; yoksa bir sonraki düzenleme cihazın kendi gönderdiği değişiklikle çakışıp reddedilirdi.
+  final Listenable? _programsSynced;
+
+  TrainingBloc(this._repository, {Listenable? programsSynced})
+      : _programsSynced = programsSynced,
+        super(const TrainingState()) {
+    _programsSynced?.addListener(_onProgramsSynced);
     on<LoadMyPrograms>(_onLoadMyPrograms);
     on<LogWorkoutSet>(_onLogWorkoutSet);
     on<DeleteProgram>(_onDeleteProgram);
@@ -26,6 +34,11 @@ class TrainingBloc extends Bloc<TrainingEvent, TrainingState> {
     on<ClearTrainingMessages>((event, emit) {
       emit(state.copyWith(clearError: true));
     });
+  }
+
+  /// Programlar gösterilmiyorsa (koç ekranı ya da henüz yüklenmedi) tazelenecek bir şey yok.
+  void _onProgramsSynced() {
+    if (state.activePrograms.isNotEmpty) add(const LoadMyPrograms());
   }
 
   Future<void> _onDeleteCoachTemplate(
@@ -245,7 +258,7 @@ class TrainingBloc extends Bloc<TrainingEvent, TrainingState> {
     Emitter<TrainingState> emit,
   ) async {
     try {
-      final result = await _repository.deletePersonalProgram(event.id);
+      final result = await _repository.deletePersonalProgram(event.id, localId: event.localId);
       if (result.success) {
         add(const LoadMyPrograms());
       } else {
@@ -337,6 +350,7 @@ class TrainingBloc extends Bloc<TrainingEvent, TrainingState> {
 
   @override
   Future<void> close() {
+    _programsSynced?.removeListener(_onProgramsSynced);
     _repository.unsubscribeFromTrainingUpdates();
     return super.close();
   }

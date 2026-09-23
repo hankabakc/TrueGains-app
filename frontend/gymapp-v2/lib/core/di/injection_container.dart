@@ -180,7 +180,7 @@ Future<void> initDependencies() async {
 
   // --- BLOCS / CUBITS ---
   sl.registerLazySingleton(() => AuthBloc(sl<AuthRepository>()));
-  sl.registerFactory(() => TrainingBloc(sl<TrainingRepository>()));
+  sl.registerFactory(() => TrainingBloc(sl<TrainingRepository>(), programsSynced: sl<SyncManager>().sentCount));
   sl.registerLazySingleton(() => ChatBloc(sl<ChatRepository>()));
   sl.registerFactory(() => SocialBloc(sl<SocialRepository>()));
   sl.registerFactory(() => ClientGalleryBloc(sl<ClientGalleryRepository>(), sl<FileApiService>()));

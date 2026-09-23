@@ -128,7 +128,7 @@ class TemplateSyncDataLossIT extends IntegrationTestBase {
 
 		return new TrainingBlockDTO(template.getId(), newName, template.getDescription(), null, null, null, null,
 				template.getStartDate(), template.getEndDate(), template.getIsActive(), template.getDurationWeeks(),
-				dayDtos, false, true, false);
+				dayDtos, false, true, false, null, null);
 	}
 
 	@Test

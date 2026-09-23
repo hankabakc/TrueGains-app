@@ -25,7 +25,9 @@ import com.gym.v2.social.repository.MessageRepository;
 import com.gym.v2.social.service.ChatService;
 import com.gym.v2.support.IntegrationTestBase;
 import com.gym.v2.training.dto.WorkoutSessionRequestDTO;
+import com.gym.v2.training.entity.TrainingBlock;
 import com.gym.v2.training.entity.WorkoutSession;
+import com.gym.v2.training.repository.TrainingBlockRepository;
 import com.gym.v2.training.repository.WorkoutSessionRepository;
 import com.gym.v2.training.service.WorkoutSessionService;
 import jakarta.persistence.EntityManager;
@@ -48,6 +50,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
@@ -88,6 +91,9 @@ class IdempotentWriteIT extends IntegrationTestBase {
 
 	@Autowired
 	private MeasurementRepository measurementRepository;
+
+	@Autowired
+	private TrainingBlockRepository trainingBlockRepository;
 
 	@Autowired
 	private Clock clock;
@@ -507,6 +513,67 @@ class IdempotentWriteIT extends IntegrationTestBase {
 		second.setLocalId("yerel-besin-db");
 
 		assertThatThrownBy(() -> foodRepository.saveAndFlush(second))
+			.isInstanceOf(DataIntegrityViolationException.class);
+	}
+
+	// --- G-74: internetsiz oluşturulan kişisel program ---
+
+	private String personalProgramJson(String localId) throws Exception {
+		return objectMapper.writeValueAsString(Map.of("name", "Yerel Program", "start_date", "2026-09-23",
+				"duration_weeks", 4, "workout_days", List.of(), "local_id", localId));
+	}
+
+	@Test
+	void personalProgram_queuedCreateTwice_isStoredOnce() throws Exception {
+		AppUser client = createUser("idem_prog@test.com", UserRole.CLIENT);
+
+		for (int i = 0; i < 2; i++) {
+			mockMvc
+				.perform(post("/api/v1/training/programs/personal").header("Authorization", bearerTokenFor(client))
+					.contentType(MediaType.APPLICATION_JSON)
+					.content(personalProgramJson("yerel-program-1")))
+				.andExpect(status().isOk());
+		}
+		entityManager.flush();
+		entityManager.clear();
+
+		assertThat(trainingBlockRepository.findByClientId(client.getId())).extracting(TrainingBlock::getLocalId)
+			.containsExactly("yerel-program-1");
+	}
+
+	@Test
+	void personalProgram_localIdOfAnotherClient_createsOwnProgram() throws Exception {
+		AppUser owner = createUser("prog_owner@test.com", UserRole.CLIENT);
+		AppUser other = createUser("prog_other@test.com", UserRole.CLIENT);
+
+		for (AppUser user : List.of(owner, other)) {
+			mockMvc
+				.perform(post("/api/v1/training/programs/personal").header("Authorization", bearerTokenFor(user))
+					.contentType(MediaType.APPLICATION_JSON)
+					.content(personalProgramJson("ayni-kimlik")))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.data.client_id").value(user.getId()));
+		}
+		entityManager.flush();
+		entityManager.clear();
+
+		assertThat(trainingBlockRepository.findByClientId(owner.getId())).hasSize(1);
+		assertThat(trainingBlockRepository.findByClientId(other.getId())).hasSize(1);
+	}
+
+	@Test
+	void database_rejectsDuplicateProgramLocalIdForSameClient() {
+		AppUser client = createUser("prog_db@test.com", UserRole.CLIENT);
+		TrainingBlock first = new TrainingBlock("A", null, null, client, LocalDate.of(2026, 9, 23),
+				LocalDate.of(2026, 10, 21));
+		first.setLocalId("yerel-program-db");
+		trainingBlockRepository.saveAndFlush(first);
+
+		TrainingBlock second = new TrainingBlock("B", null, null, client, LocalDate.of(2026, 9, 23),
+				LocalDate.of(2026, 10, 21));
+		second.setLocalId("yerel-program-db");
+
+		assertThatThrownBy(() -> trainingBlockRepository.saveAndFlush(second))
 			.isInstanceOf(DataIntegrityViolationException.class);
 	}
 

@@ -651,5 +651,96 @@ void main() {
 
     expect(manager.pendingRecords().map((PendingRecord r) => r.endpoint).toList(), equals(<String>['/ilk', '/ikinci']));
   });
-}
 
+  // --- G-74: kişisel program kuyruğu (PUT, yük değiştirme, gönderim kilidi, gönderim sayacı) ---
+
+  test('düzenleme kaydı PUT ile gider, POST edilmez, başarıda kuyruktan çıkar', () async {
+    when(() => dio.put<Map<String, dynamic>>(any(), data: any(named: 'data'))).thenAnswer(
+      (inv) async => Response<Map<String, dynamic>>(
+        requestOptions: RequestOptions(path: inv.positionalArguments.first as String),
+        statusCode: 200,
+      ),
+    );
+    final box = await Hive.openBox<String>(SyncManager.boxName);
+    final manager = managerFor(box);
+
+    await manager.addToQueue('/training/programs/personal/7', <String, dynamic>{'name': 'Yeni'},
+        method: SyncManager.methodPut);
+    await manager.syncPendingData();
+
+    verify(() => dio.put<Map<String, dynamic>>('/training/programs/personal/7', data: <String, dynamic>{'name': 'Yeni'}))
+        .called(1);
+    verifyNever(() => dio.post<Map<String, dynamic>>(any(), data: any(named: 'data')));
+    expect(box.isEmpty, isTrue);
+  });
+
+  test('bekleyen kaydın yükü değişir, kuyruktaki yeri korunur; gönderilmiş kaydın yükü değişmez', () async {
+    final box = await Hive.openBox<String>(SyncManager.boxName);
+    final manager = managerFor(box);
+    await putRecord(box, 'b', '/program', '2026-09-23T08:00:00.000');
+    await putRecord(box, 'a', '/sonraki', '2026-09-23T08:00:05.000');
+
+    final bool replaced = await manager.replacePayload('b', <String, dynamic>{'name': 'Düzenlendi'});
+    await manager.syncPendingData();
+
+    expect(replaced, isTrue);
+    verifyInOrder(<void Function()>[
+      () => dio.post<Map<String, dynamic>>('/program', data: <String, dynamic>{'name': 'Düzenlendi'}),
+      () => dio.post<Map<String, dynamic>>('/sonraki', data: any(named: 'data')),
+    ]);
+    expect(await manager.replacePayload('b', <String, dynamic>{'name': 'Geç'}), isFalse);
+    expect(box.isEmpty, isTrue);
+  });
+
+  test('bekleyen kayıt kullanıcı isteğiyle çıkarılır, diğer kayıt kalır', () async {
+    final box = await Hive.openBox<String>(SyncManager.boxName);
+    final manager = managerFor(box);
+    await putRecord(box, 'a', '/program', '2026-09-23T08:00:00.000');
+    await putRecord(box, 'b', '/baska', '2026-09-23T08:00:05.000');
+
+    expect(await manager.removePending('a'), isTrue);
+    expect(await manager.removePending('a'), isFalse);
+
+    expect(box.keys.toList(), equals(<String>['b']));
+  });
+
+  test('gönderilmekte olan kayıt değiştirilemez ve çıkarılamaz; gönderilen yük gider, kayıt sonra silinir', () async {
+    final Completer<Response<Map<String, dynamic>>> inFlight = Completer<Response<Map<String, dynamic>>>();
+    when(() => dio.post<Map<String, dynamic>>('/program', data: any(named: 'data')))
+        .thenAnswer((_) => inFlight.future);
+    final box = await Hive.openBox<String>(SyncManager.boxName);
+    final manager = managerFor(box);
+    await putRecord(box, 'a', '/program', '2026-09-23T08:00:00.000');
+
+    final Future<void> sync = manager.syncPendingData();
+    await Future<void>.delayed(Duration.zero);
+
+    expect(await manager.replacePayload('a', <String, dynamic>{'name': 'Geç düzenleme'}), isFalse);
+    expect(await manager.removePending('a'), isFalse);
+    final Map<String, dynamic> stored = jsonDecode(box.get('a')!) as Map<String, dynamic>;
+    expect(stored['payload'], equals(<String, dynamic>{}));
+
+    inFlight.complete(Response<Map<String, dynamic>>(requestOptions: RequestOptions(path: '/program'), statusCode: 200));
+    await sync;
+
+    expect(box.isEmpty, isTrue);
+    expect(await manager.replacePayload('a', <String, dynamic>{'name': 'Geç düzenleme'}), isFalse);
+  });
+
+  test('gönderim turu kayıt ulaştırınca sayaç artar; hiçbir kayıt gitmezse artmaz', () async {
+    final box = await Hive.openBox<String>(SyncManager.boxName);
+    final manager = managerFor(box);
+    await manager.addToQueue('/program', <String, dynamic>{});
+
+    await manager.syncPendingData();
+    expect(manager.sentCount.value, equals(1));
+
+    when(() => dio.post<Map<String, dynamic>>(any(), data: any(named: 'data')))
+        .thenThrow(httpError('/program', 503, message: 'Bakımda'));
+    await manager.addToQueue('/program', <String, dynamic>{});
+    await manager.syncPendingData();
+
+    expect(manager.sentCount.value, equals(1));
+    expect(box.length, equals(1));
+  });
+}

@@ -19,6 +19,12 @@ class CreatePersonalProgramState extends Equatable {
   final int? editingProgramId;
   final int durationWeeks;
 
+  /// Düzenlenen programın cihaz kimliği (G-74): kuyruktaki programın düzenlemesi aynı kuyruk kaydına gider.
+  final String? editingLocalId;
+
+  /// Düzenlemeye başlanan sürüm (G-74, KR13): sunucuda o arada değiştiyse güncelleme reddedilir.
+  final int? editingVersion;
+
   const CreatePersonalProgramState({
     this.status = CreatePersonalProgramStatus.initial,
     this.draftDays = const [],
@@ -31,6 +37,8 @@ class CreatePersonalProgramState extends Equatable {
     this.isTemplate = false,
     this.editingProgramId,
     this.durationWeeks = 4,
+    this.editingLocalId,
+    this.editingVersion,
     this.error,
   });
 
@@ -46,6 +54,8 @@ class CreatePersonalProgramState extends Equatable {
     bool? isTemplate,
     int? editingProgramId,
     int? durationWeeks,
+    String? editingLocalId,
+    int? editingVersion,
     String? error,
   }) {
     return CreatePersonalProgramState(
@@ -60,6 +70,8 @@ class CreatePersonalProgramState extends Equatable {
       isTemplate: isTemplate ?? this.isTemplate,
       editingProgramId: editingProgramId ?? this.editingProgramId,
       durationWeeks: durationWeeks ?? this.durationWeeks,
+      editingLocalId: editingLocalId ?? this.editingLocalId,
+      editingVersion: editingVersion ?? this.editingVersion,
       error: error ?? this.error,
     );
   }
@@ -77,6 +89,8 @@ class CreatePersonalProgramState extends Equatable {
         isTemplate,
         editingProgramId,
         durationWeeks,
+        editingLocalId,
+        editingVersion,
         error,
       ];
 }

@@ -344,6 +344,24 @@ class _TrainingDashboardPageState extends State<TrainingDashboardPage>
                           ),
                         ),
                       ],
+                      // G-74: sunucuya gitmeyi bekleyen değişiklik (internetsiz oluşturma ya da düzenleme).
+                      if (program.isQueued) ...[
+                        const SizedBox(height: AppSpacing.xs),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xs, vertical: AppSpacing.xxs),
+                          decoration: BoxDecoration(
+                            color: AppColors.glassWhite,
+                            borderRadius: BorderRadius.circular(AppRadius.pill),
+                          ),
+                          child: Text(
+                            'BEKLİYOR',
+                            style: AppTextStyles.tagText.copyWith(
+                              color: AppColors.textMuted,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -575,7 +593,8 @@ class _TrainingDashboardPageState extends State<TrainingDashboardPage>
                     ],
                   ),
                 ),
-              ] else if (!program.isActive) ...[
+              // Sunucuya henüz gitmemiş (id 0) program etkinleştirilemez: etkinleştirme sunucu kimliğiyle yapılır (G-74).
+              ] else if (!program.isActive && program.id != 0) ...[
                 const SizedBox(height: AppSpacing.md),
                 ElevatedButton(
                   onPressed: () {
@@ -868,7 +887,7 @@ class _TrainingDashboardPageState extends State<TrainingDashboardPage>
                 context.read<TrainingBloc>().add(DeleteProgram(program.id));
                 context.read<TrainingBloc>().add(const LoadCoachAssignedPrograms());
               } else {
-                context.read<TrainingBloc>().add(DeleteProgram(program.id));
+                context.read<TrainingBloc>().add(DeleteProgram(program.id, localId: program.localId));
               }
               Navigator.pop(ctx);
             },

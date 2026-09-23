@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:bloc_test/bloc_test.dart';
 import 'package:mocktail/mocktail.dart';
@@ -13,6 +14,25 @@ import 'package:gymapp_v2/features/training/repository/training_repository.dart'
 import 'package:gymapp_v2/features/training/models/training_models.dart';
 
 class MockTrainingRepository extends Mock implements TrainingRepository {}
+
+/// Dinleyici sayısını gösteren tetikleyici (G-74): bloc kapanınca dinlemeyi bırakıyor mu.
+class _CountingNotifier extends ChangeNotifier {
+  int listeners = 0;
+
+  @override
+  void addListener(VoidCallback listener) {
+    listeners++;
+    super.addListener(listener);
+  }
+
+  @override
+  void removeListener(VoidCallback listener) {
+    listeners--;
+    super.removeListener(listener);
+  }
+
+  void fire() => notifyListeners();
+}
 
 void main() {
   setUpAll(() {
@@ -699,5 +719,57 @@ void main() {
         ),
       ],
     );
+  });
+
+  group('TrainingBloc - çevrimdışı kişisel program (G-74)', () {
+    blocTest<TrainingBloc, TrainingState>(
+      'bekleyen programın silinmesi cihaz kimliğini depoya iletir',
+      build: () {
+        when(() => repository.deletePersonalProgram(0, localId: 'L1')).thenAnswer((_) async => ok<void>(null));
+        when(() => repository.getMyActivePrograms()).thenAnswer((_) async => ok(<TrainingBlock>[]));
+        return TrainingBloc(repository);
+      },
+      act: (bloc) => bloc.add(const DeleteProgram(0, localId: 'L1')),
+      wait: const Duration(milliseconds: 50),
+      verify: (_) {
+        verify(() => repository.deletePersonalProgram(0, localId: 'L1')).called(1);
+      },
+    );
+
+    test('kuyruk gönderim yapınca gösterilen program listesi tazelenir', () async {
+      final _CountingNotifier synced = _CountingNotifier();
+      when(() => repository.getMyActivePrograms()).thenAnswer((_) async => ok(<TrainingBlock>[sampleProgram]));
+      final TrainingBloc bloc = TrainingBloc(repository, programsSynced: synced)..add(const LoadMyPrograms());
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      clearInteractions(repository);
+
+      synced.fire();
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+
+      verify(() => repository.getMyActivePrograms()).called(1);
+      await bloc.close();
+    });
+
+    test('program gösterilmiyorsa (koç ekranı) gönderim listeyi yüklemez', () async {
+      final _CountingNotifier synced = _CountingNotifier();
+      final TrainingBloc bloc = TrainingBloc(repository, programsSynced: synced);
+
+      synced.fire();
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+
+      verifyNever(() => repository.getMyActivePrograms());
+      await bloc.close();
+    });
+
+    test('bloc kapanınca kuyruk dinlemesi bırakılır', () async {
+      final _CountingNotifier synced = _CountingNotifier();
+      when(() => repository.unsubscribeFromTrainingUpdates()).thenReturn(null);
+      final TrainingBloc bloc = TrainingBloc(repository, programsSynced: synced);
+      expect(synced.listeners, equals(1));
+
+      await bloc.close();
+
+      expect(synced.listeners, equals(0));
+    });
   });
 }

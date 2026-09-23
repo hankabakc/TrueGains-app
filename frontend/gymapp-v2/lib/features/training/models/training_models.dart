@@ -19,6 +19,13 @@ class TrainingBlock extends Equatable {
   final int? version;
   final int durationWeeks;
 
+  /// Cihazın verdiği kimlik (G-74): internetsiz oluşturulan program kuyruktan bir kez yazılır, düzenlemesi aynı kuyruk
+  /// kaydına gider.
+  final String? localId;
+
+  /// Sunucuya gitmeyi bekleyen değişikliği var (kuyrukta oluşturma ya da düzenleme); yalnızca cihazda, gönderilmez.
+  final bool isQueued;
+
   const TrainingBlock({
     required this.id,
     required this.name,
@@ -36,9 +43,11 @@ class TrainingBlock extends Equatable {
     required this.workoutDays,
     this.version,
     this.durationWeeks = 4,
+    this.localId,
+    this.isQueued = false,
   });
 
-  factory TrainingBlock.fromJson(Map<String, dynamic> json) {
+  factory TrainingBlock.fromJson(Map<String, dynamic> json, {bool isQueued = false}) {
     try {
       return TrainingBlock(
         id: (json['id'] as num?)?.toInt() ?? 0,
@@ -65,6 +74,8 @@ class TrainingBlock extends Equatable {
             [],
         version: (json['version'] as num?)?.toInt(),
         durationWeeks: (json['duration_weeks'] as num?)?.toInt() ?? 4,
+        localId: json['local_id'] as String?,
+        isQueued: isQueued,
       );
     } catch (e) {
       // JSON ayrıştırma hatası durumunda hatayı yukarı fırlat
@@ -109,6 +120,8 @@ class TrainingBlock extends Equatable {
     workoutDays,
     version,
     durationWeeks,
+    localId,
+    isQueued,
   ];
 }
 

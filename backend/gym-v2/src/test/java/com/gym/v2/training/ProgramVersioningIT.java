@@ -10,14 +10,20 @@ import com.gym.v2.training.service.TrainingBlockService;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import java.time.LocalDate;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
  * {@code TrainingBlock.version} alanının iyimser kilit olarak doğru çalıştığını doğrular.
@@ -51,7 +57,7 @@ class ProgramVersioningIT extends IntegrationTestBase {
 	private TrainingBlockDTO renameRequest(TrainingBlock block, String newName) {
 		return new TrainingBlockDTO(block.getId(), newName, block.getDescription(), null, null, null, null,
 				block.getStartDate(), block.getEndDate(), block.getIsActive(), block.getDurationWeeks(), List.of(),
-				true, false, false);
+				true, false, false, null, null);
 	}
 
 	@Test
@@ -80,6 +86,50 @@ class ProgramVersioningIT extends IntegrationTestBase {
 			.isEqualTo(versionBefore + 1);
 		assertThat(blockRepository.findById(saved.getId()).orElseThrow().getName()).as("güncelleme yine de uygulanmalı")
 			.isEqualTo("Ikinci Ad");
+	}
+
+	private String updateJson(String name, Long version) throws Exception {
+		Map<String, Object> body = new HashMap<>(
+				Map.of("name", name, "start_date", "2026-01-01", "duration_weeks", 4, "workout_days", List.of()));
+		body.put("version", version);
+		return objectMapper.writeValueAsString(body);
+	}
+
+	/**
+	 * KR13 (G-74): iki cihaz aynı programı düzenler. Önce yazan kazanır; eski sürümle
+	 * gelen ikinci düzenleme 409 alır ve sunucudaki hâli bozmaz. Çevrimdışı kuyruk 409'u
+	 * kalıcı ret sayıp kaydı "aktarılamadı" listesinde tutar.
+	 */
+	@Test
+	void update_withStaleVersion_isConflictAndProgramUnchanged() throws Exception {
+		AppUser client = createUser("ver_stale@test.com", UserRole.CLIENT);
+		TrainingBlock saved = blockRepository.saveAndFlush(new TrainingBlock("Ilk Ad", "Aciklama", null, client,
+				LocalDate.of(2026, 1, 1), LocalDate.of(2026, 2, 1)));
+		long startVersion = saved.getVersion();
+		entityManager.clear();
+
+		mockMvc
+			.perform(put("/api/v1/training/programs/personal/" + saved.getId())
+				.header("Authorization", bearerTokenFor(client))
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(updateJson("Birinci Cihaz", startVersion)))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.data.version").value(startVersion + 1));
+		entityManager.flush();
+		entityManager.clear();
+
+		mockMvc
+			.perform(put("/api/v1/training/programs/personal/" + saved.getId())
+				.header("Authorization", bearerTokenFor(client))
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(updateJson("Ikinci Cihaz", startVersion)))
+			.andExpect(status().isConflict());
+		entityManager.flush();
+		entityManager.clear();
+
+		TrainingBlock after = blockRepository.findById(saved.getId()).orElseThrow();
+		assertThat(after.getName()).isEqualTo("Birinci Cihaz");
+		assertThat(after.getVersion()).isEqualTo(startVersion + 1);
 	}
 
 }

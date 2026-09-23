@@ -250,4 +250,47 @@ void main() {
       await cubit.close();
     });
   });
+
+  group('internetsiz düzenleme (G-74)', () {
+    TrainingBlock block({required int id, String? localId, int? version}) => TrainingBlock(
+          id: id,
+          name: 'Program',
+          coachName: 'Kişisel Program',
+          clientId: 0,
+          clientName: '',
+          startDate: DateTime(2026, 9, 23),
+          endDate: DateTime(2026, 10, 21),
+          isActive: false,
+          isPersonal: true,
+          workoutDays: const <WorkoutDay>[],
+          localId: localId,
+          version: version,
+        );
+
+    test('kuyruktaki program düzenlenince aynı cihaz kimliğiyle kaydedilir', () async {
+      final cubit = await newCubit();
+      cubit.init(block(id: 0, localId: 'L1'));
+      when(() => repository.createPersonalProgram(any())).thenAnswer((_) async => ok<TrainingBlock>(null));
+
+      await cubit.saveProgram('Program');
+
+      final TrainingBlock sent =
+          verify(() => repository.createPersonalProgram(captureAny())).captured.single as TrainingBlock;
+      expect(sent.localId, equals('L1'));
+      await cubit.close();
+    });
+
+    test('düzenlenen program düzenlemeye başlanan sürümle gider', () async {
+      final cubit = await newCubit();
+      cubit.init(block(id: 5, version: 3));
+      when(() => repository.updatePersonalProgram(any(), any())).thenAnswer((_) async => ok<TrainingBlock>(null));
+
+      await cubit.saveProgram('Program');
+
+      final TrainingBlock sent =
+          verify(() => repository.updatePersonalProgram(5, captureAny())).captured.single as TrainingBlock;
+      expect(sent.version, equals(3));
+      await cubit.close();
+    });
+  });
 }

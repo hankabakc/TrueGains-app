@@ -140,7 +140,7 @@ class TrainingBlockOwnershipTest {
 
 	private TrainingBlockDTO requestDto() {
 		return new TrainingBlockDTO(null, "Yeni Ad", "Yeni Aciklama", null, null, null, null, LocalDate.now(), null,
-				null, 4, null, null, null, null);
+				null, 4, null, null, null, null, null, null);
 	}
 
 	// ---------------------------------------------------------------------------

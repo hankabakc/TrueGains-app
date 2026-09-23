@@ -15,6 +15,10 @@ import 'package:uuid/uuid.dart';
 import '../data/services/training_api_service.dart';
 
 class TrainingRepository {
+  static const String _queuedMessage = 'Program cihaza kaydedildi; internet gelince aktarılacak.';
+  static const String _sentMeanwhileMessage =
+      'Program bu sırada sunucuya aktarıldı. Liste yenilendikten sonra işlemi tekrarlayın.';
+
   final TrainingApiService _apiService;
   final NetworkInfo _networkInfo;
   final SyncManager _syncManager;
@@ -35,16 +39,97 @@ class TrainingRepository {
   }
 
   // --- Aktif Programlar ---
-  Future<ApiResponse<List<TrainingBlock>>> getMyActivePrograms() {
-    return _apiService.getMyActivePrograms();
+  /// Sunucudaki programlar ve kuyruktaki kişisel program değişiklikleri (KR13, G-74): internetsiz oluşturulan program
+  /// "bekliyor" olarak eklenir, düzenlenen programın yeni hâli görünür, silinmeyi bekleyen program gizlenir.
+  Future<ApiResponse<List<TrainingBlock>>> getMyActivePrograms() async {
+    final ApiResponse<List<TrainingBlock>> res = await _apiService.getMyActivePrograms();
+    final List<PendingRecord> queued = _queuedProgramRecords();
+    if (queued.isEmpty) return res;
+    // Bağlantı varken sunucu hatası örtülmez; internetsiz ve önbelleksizse yalnızca kuyruktakiler görünür.
+    if (!res.success && await _networkInfo.isConnected) return res;
+
+    final List<TrainingBlock> programs = <TrainingBlock>[...?res.data];
+    for (final PendingRecord r in queued) {
+      if (r.endpoint == TrainingApiService.personalProgramsPath) {
+        programs.add(TrainingBlock.fromJson(r.payload, isQueued: true));
+        continue;
+      }
+      final int? id = int.tryParse(r.endpoint.substring(TrainingApiService.personalProgramsPath.length + 1));
+      final int index = programs.indexWhere((TrainingBlock p) => p.id == id);
+      if (index < 0) continue;
+      if (r.method == SyncManager.methodDelete) {
+        programs.removeAt(index);
+      } else {
+        // İçerik kuyruktaki düzenlemeden; aktiflik sunucunun tuttuğu durum (düzenleme onu değiştirmez).
+        programs[index] = TrainingBlock.fromJson(
+          <String, dynamic>{...r.payload, 'id': id, 'is_active': programs[index].isActive},
+          isQueued: true,
+        );
+      }
+    }
+    return ApiResponse<List<TrainingBlock>>(
+      success: true,
+      message: res.message,
+      data: programs,
+      timestamp: DateTime.now().toIso8601String(),
+    );
   }
 
   // --- Yeni Kişisel Program Ekleme ---
+  /// Bağlantı yoksa kuyruğa girer (KR13, G-74); program cihazda kimlik alır, kuyruktan bir kez yazılır. Kimliği olan
+  /// blok kuyruktaki (henüz gönderilmemiş) programın düzenlemesidir: aynı kuyruk kaydının yükü değişir, ikinci program
+  /// açılmaz.
   Future<ApiResponse<TrainingBlock>> createPersonalProgram(
     TrainingBlock block,
-  ) {
-    return _apiService.createPersonalProgram(block.toJson());
+  ) async {
+    final String localId = block.localId ?? const Uuid().v4();
+    final Map<String, dynamic> payload = <String, dynamic>{...block.toJson(), 'local_id': localId};
+
+    if (block.localId != null) {
+      final PendingRecord? queued = _queuedCreateOf(localId);
+      if (queued != null && await _syncManager.replacePayload(queued.key, payload)) {
+        return _queuedResult(payload);
+      }
+      // Kayıt gönderildi ya da tam o an gönderiliyor: yeniden oluşturma sunucuda ilk hâli döndürür, düzenleme sessizce
+      // kaybolurdu. Taslak ekranda kalır; liste gönderimden sonra yenilenir.
+      return ApiResponse<TrainingBlock>.error(_sentMeanwhileMessage);
+    }
+
+    if (await _networkInfo.isConnected) {
+      return _apiService.createPersonalProgram(payload);
+    }
+    await _syncManager.addToQueue(TrainingApiService.personalProgramsPath, payload);
+    return _queuedResult(payload);
   }
+
+  ApiResponse<TrainingBlock> _queuedResult(Map<String, dynamic> payload) {
+    return ApiResponse<TrainingBlock>(
+      success: true,
+      message: _queuedMessage,
+      data: TrainingBlock.fromJson(payload, isQueued: true),
+      timestamp: DateTime.now().toIso8601String(),
+    );
+  }
+
+  /// Oturumdaki kullanıcının kuyruktaki (gönderilmemiş, reddedilmemiş) kişisel program kayıtları, eklenme sırasıyla.
+  List<PendingRecord> _queuedProgramRecords() {
+    const String path = TrainingApiService.personalProgramsPath;
+    return _syncManager
+        .pendingRecords()
+        .where((PendingRecord r) => r.endpoint == path || r.endpoint.startsWith('$path/'))
+        .toList();
+  }
+
+  /// Henüz sunucuya gitmemiş programın kuyruktaki oluşturma kaydı.
+  PendingRecord? _queuedCreateOf(String localId) => _queuedProgramRecords()
+      .where((PendingRecord r) =>
+          r.endpoint == TrainingApiService.personalProgramsPath && r.payload['local_id'] == localId)
+      .firstOrNull;
+
+  /// Programın kuyruktaki (gönderilmemiş) düzenlemesi.
+  PendingRecord? _queuedEditOf(String path) => _queuedProgramRecords()
+      .where((PendingRecord r) => r.endpoint == path && r.method == SyncManager.methodPut)
+      .lastOrNull;
 
   // --- Set Loglama ---
   Future<ApiResponse<WorkoutLog>> logSet(
@@ -55,11 +140,30 @@ class TrainingRepository {
   }
 
   // --- Kişisel Program Güncelleme ---
+  /// Bağlantı yoksa kuyruğa girer (KR13, G-74). Programın gönderilmemiş bir düzenlemesi varsa onun yükü değişir ve
+  /// düzenlemeye başlanan sürüm korunur: iki düzenleme ayrı gitseydi ikincisi, ilkinin sunucuda artırdığı sürümle
+  /// çakışıp reddedilirdi.
   Future<ApiResponse<TrainingBlock>> updatePersonalProgram(
     int id,
     TrainingBlock block,
-  ) {
-    return _apiService.updatePersonalProgram(id, block.toJson());
+  ) async {
+    final String path = '${TrainingApiService.personalProgramsPath}/$id';
+    final Map<String, dynamic> payload = block.toJson();
+
+    final PendingRecord? queued = _queuedEditOf(path);
+    if (queued != null) {
+      final Map<String, dynamic> merged = <String, dynamic>{...payload, 'version': queued.payload['version']};
+      if (await _syncManager.replacePayload(queued.key, merged)) {
+        return _queuedResult(merged);
+      }
+      return ApiResponse<TrainingBlock>.error(_sentMeanwhileMessage);
+    }
+
+    if (await _networkInfo.isConnected) {
+      return _apiService.updatePersonalProgram(id, payload);
+    }
+    await _syncManager.addToQueue(path, payload, method: SyncManager.methodPut);
+    return _queuedResult(payload);
   }
 
   // --- İdman Oturumu Kaydetme ---
@@ -128,8 +232,31 @@ class TrainingRepository {
     return _apiService.getWorkoutHistory(clientId);
   }
 
-  Future<ApiResponse<void>> deletePersonalProgram(int id) {
-    return _apiService.deletePersonalProgram(id);
+  /// Bağlantı yoksa silme kuyruğa girer (KR13, G-74); liste programı hemen gizler. Henüz sunucuya gitmemiş programın
+  /// ([id] 0) silinmesi kuyruktaki oluşturma kaydını çıkarır. Programın gönderilmemiş düzenlemesi silmeyle anlamını
+  /// yitirir ve kuyruktan çıkar; yoksa silinmiş programa gidip "aktarılamadı" görünürdü.
+  Future<ApiResponse<void>> deletePersonalProgram(int id, {String? localId}) async {
+    if (id == 0) {
+      final PendingRecord? queued = localId == null ? null : _queuedCreateOf(localId);
+      if (queued == null || !await _syncManager.removePending(queued.key)) {
+        return ApiResponse<void>.error(_sentMeanwhileMessage);
+      }
+      return ApiResponse<void>(success: true, message: '', timestamp: DateTime.now().toIso8601String());
+    }
+
+    final String path = '${TrainingApiService.personalProgramsPath}/$id';
+    final ApiResponse<void> res;
+    if (await _networkInfo.isConnected) {
+      res = await _apiService.deletePersonalProgram(id);
+    } else {
+      await _syncManager.addToQueue(path, <String, dynamic>{}, method: SyncManager.methodDelete);
+      res = ApiResponse<void>(success: true, message: _queuedMessage, timestamp: DateTime.now().toIso8601String());
+    }
+    final PendingRecord? edit = _queuedEditOf(path);
+    if (res.success && edit != null) {
+      await _syncManager.removePending(edit.key);
+    }
+    return res;
   }
 
   Future<ApiResponse<void>> deleteWorkoutSession(int id) {

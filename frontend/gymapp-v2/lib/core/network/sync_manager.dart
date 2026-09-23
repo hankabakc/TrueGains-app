@@ -62,6 +62,7 @@ class SyncManager {
   static const Set<int> permanentStatusCodes = {400, 403, 404, 409, 422};
 
   static const String methodPost = 'POST';
+  static const String methodPut = 'PUT';
   static const String methodDelete = 'DELETE';
 
   static const String _statusRejected = 'rejected';
@@ -77,8 +78,15 @@ class SyncManager {
   /// Oturumdaki kullanıcının sunucuya aktarılamayan (reddedilen) kayıt sayısı; şerit bunu dinler.
   final ValueNotifier<int> rejectedCount = ValueNotifier<int>(0);
 
+  /// Gönderim turunda en az bir kayıt sunucuya ulaşınca artar. Sunucunun verdiği hâli (kişisel programın sürümü)
+  /// gösteren ekran bununla tazelenir; yoksa bir sonraki düzenleme kendi gönderdiği değişiklikle çakışırdı (G-74).
+  final ValueNotifier<int> sentCount = ValueNotifier<int>(0);
+
   /// Gönderim sürerken gelen ikinci çağrı beklemez, hemen döner; aynı kayıt iki kez gitmez.
   bool _isSyncing = false;
+
+  /// O an sunucuya gönderilmekte olan kaydın anahtarı; o kayıt değiştirilmez ve çıkarılmaz (G-74).
+  String? _sendingKey;
 
   SyncManager({
     required this.networkInfo,
@@ -146,6 +154,7 @@ class SyncManager {
       if (!isConnected) return;
 
       final List<String> keys = _keysInQueueOrder();
+      bool sentAny = false;
 
       for (final key in keys) {
         final String? rawData = syncBox.get(key);
@@ -166,12 +175,16 @@ class SyncManager {
           final String endpoint = item['endpoint'] as String;
           final Map<String, dynamic> payload = item['payload'] as Map<String, dynamic>;
 
-          final response = _methodOf(item) == methodDelete
-              ? await dioClient.dio.delete<Map<String, dynamic>>(endpoint)
-              : await dioClient.dio.post<Map<String, dynamic>>(endpoint, data: payload);
+          _sendingKey = key;
+          final Response<Map<String, dynamic>> response = switch (_methodOf(item)) {
+            methodDelete => await dioClient.dio.delete<Map<String, dynamic>>(endpoint),
+            methodPut => await dioClient.dio.put<Map<String, dynamic>>(endpoint, data: payload),
+            _ => await dioClient.dio.post<Map<String, dynamic>>(endpoint, data: payload),
+          };
 
           if (response.statusCode == 200 || response.statusCode == 201 || response.statusCode == 204) {
             await syncBox.delete(key);
+            sentAny = true;
           }
         } on DioException catch (e) {
           // G-83: silinecek kayıt sunucuda zaten yoksa silme amacına ulaşmıştır; ret değil.
@@ -185,8 +198,11 @@ class SyncManager {
           // Geçici hata: kayıt olduğu gibi bekler, sonraki tetiklemede yeniden denenir.
         } catch (e) {
           // Bozuk kayıt ya da beklenmeyen hata: kayıt kuyrukta kalır.
+        } finally {
+          _sendingKey = null;
         }
       }
+      if (sentAny) sentCount.value++;
     } finally {
       _isSyncing = false;
       refreshRejectedCount();
@@ -290,6 +306,26 @@ class SyncManager {
       item['preview'] = ((item['preview'] as List<dynamic>?) ?? const <dynamic>[]).where(keep).toList();
       await syncBox.put(key, jsonEncode(item));
     }
+  }
+
+  /// Gönderilmemiş kaydın yükünü değiştirir; kuyruktaki yeri (eklenme sırası) korunur (G-74: kuyruktaki programın
+  /// düzenlenmesi). Kayıt artık yoksa ya da tam o an gönderiliyorsa hiçbir şey değişmez ve false döner: yeni yük,
+  /// gönderilmekte olan eski yükün ardından sessizce kaybolmasın.
+  Future<bool> replacePayload(String key, Map<String, dynamic> payload) async {
+    final String? raw = syncBox.get(key);
+    if (raw == null || key == _sendingKey) return false;
+    final Map<String, dynamic> item = jsonDecode(raw) as Map<String, dynamic>;
+    item['payload'] = payload;
+    await syncBox.put(key, jsonEncode(item));
+    return true;
+  }
+
+  /// Gönderilmemiş kaydı kullanıcı isteğiyle çıkarır (G-74: kuyruktaki programın silinmesi). Kayıt artık yoksa ya da
+  /// tam o an gönderiliyorsa çıkarılmaz, false döner.
+  Future<bool> removePending(String key) async {
+    if (key == _sendingKey || !syncBox.containsKey(key)) return false;
+    await syncBox.delete(key);
+    return true;
   }
 
   void refreshRejectedCount() {

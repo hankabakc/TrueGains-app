@@ -70,6 +70,18 @@ public class GlobalExceptionHandler {
 	}
 
 	/**
+	 * Sürüm çakışması (G-74): sunucudaki hâl geçerli, istemci eski sürümün üstüne
+	 * yazamaz.
+	 */
+	@ExceptionHandler(ConflictException.class)
+	@ResponseStatus(HttpStatus.CONFLICT)
+	public ApiResponse<Void> handleConflictException(ConflictException ex,
+			jakarta.servlet.http.HttpServletRequest request) {
+		log.warn("[CONFLICT] {} {} → {}", request.getMethod(), request.getRequestURI(), ex.getMessage());
+		return ApiResponse.error(ex.getMessage(), clock.instant());
+	}
+
+	/**
 	 * Kimlik doğrulama hataları.
 	 */
 	@ExceptionHandler(BadCredentialsException.class)
