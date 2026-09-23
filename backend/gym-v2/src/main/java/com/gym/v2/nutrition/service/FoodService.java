@@ -26,6 +26,7 @@ import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 /**
@@ -252,6 +253,15 @@ public class FoodService {
 	@Transactional
 	public FoodResponse createCustomFood(FoodCreateRequest request) {
 		AppUser currentUser = userContextService.getCurrentUser();
+		// G-87: kuyruktan ya da zaman aşımında yeniden gelen besin ikinci kez yazılmaz
+		// (sınır sayımından önce: tekrar
+		// gelen istek sınıra takılıp reddedilmesin).
+		if (request.localId() != null) {
+			Optional<Food> existing = foodRepository.findByCreatorIdAndLocalId(currentUser.getId(), request.localId());
+			if (existing.isPresent()) {
+				return convertToResponse(existing.get(), currentUser.getId());
+			}
+		}
 		long count = foodRepository.countByCreatorId(currentUser.getId());
 		if (count >= 200) {
 			throw new BadRequestException("En fazla 200 özel besin ekleyebilirsiniz. "
@@ -279,6 +289,7 @@ public class FoodService {
 		food.setPolyFat(request.polyFat());
 		food.setCreatorId(currentUser.getId());
 		food.setGlobal(false);
+		food.setLocalId(request.localId());
 		food.onPersist(clock.instant());
 
 		Food saved = foodRepository.save(food);

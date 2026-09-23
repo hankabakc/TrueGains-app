@@ -115,6 +115,14 @@ public class MealLogService {
 					mealItem.setFood(food);
 					nutrientCalculator.calculateMealItemNutrients(mealItem, food, user.getId());
 				}
+				else if (itemReq.foodLocalId() != null) {
+					// G-87: internetsiz oluşturulan besin cihaz kimliğiyle bulunur;
+					// yalnızca bu kullanıcının besini.
+					Food food = foodRepository.findByCreatorIdAndLocalId(user.getId(), itemReq.foodLocalId())
+						.orElseThrow(() -> new NotFoundException("Besin bulunamadı."));
+					mealItem.setFood(food);
+					nutrientCalculator.calculateMealItemNutrients(mealItem, food, user.getId());
+				}
 				else if (recipeId != null) {
 					Recipe recipe = recipeRepository.findById(recipeId)
 						.orElseThrow(() -> new NotFoundException("Tarif bulunamadı: " + recipeId));

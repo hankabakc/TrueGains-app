@@ -9,7 +9,8 @@ import java.time.Instant;
  * tutar.
  */
 @Entity
-@Table(name = "food")
+@Table(name = "food", uniqueConstraints = @UniqueConstraint(name = "uq_food_creator_local",
+		columnNames = { "creator_id", "local_id" }))
 public class Food {
 
 	@Id
@@ -77,6 +78,13 @@ public class Food {
 
 	@Column(unique = true)
 	private String barcode;
+
+	/**
+	 * Oluşturan cihazın besine verdiği kimlik (G-87); tekrar gelen istek ikinci satır
+	 * açmaz, internetsiz öğün besine bununla bağlanır.
+	 */
+	@Column(name = "local_id", length = 36)
+	private String localId;
 
 	// --- Constructors ---
 
@@ -270,6 +278,14 @@ public class Food {
 
 	public void setBarcode(String barcode) {
 		this.barcode = barcode;
+	}
+
+	public String getLocalId() {
+		return localId;
+	}
+
+	public void setLocalId(String localId) {
+		this.localId = localId;
 	}
 
 }

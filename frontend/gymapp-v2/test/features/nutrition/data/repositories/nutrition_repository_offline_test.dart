@@ -5,6 +5,7 @@ import 'package:gymapp_v2/core/network/sync_manager.dart';
 import 'package:gymapp_v2/features/nutrition/data/models/diet_entry_model.dart';
 import 'package:gymapp_v2/features/nutrition/data/models/diet_program_model.dart';
 import 'package:gymapp_v2/features/nutrition/data/models/diet_source.dart';
+import 'package:gymapp_v2/features/nutrition/data/models/food_model.dart';
 import 'package:gymapp_v2/features/nutrition/data/models/meal_entry_model.dart';
 import 'package:gymapp_v2/features/nutrition/data/models/meal_template_model.dart';
 import 'package:gymapp_v2/features/nutrition/data/models/water_intake_model.dart';
@@ -37,6 +38,7 @@ void main() {
 
   late MockDietApiService diet;
   late MockWaterApiService water;
+  late MockFoodApiService food;
   late MockNetworkInfo networkInfo;
   late MockSyncManager syncManager;
   late NutritionRepository repository;
@@ -45,17 +47,21 @@ void main() {
     registerFallbackValue(<String, dynamic>{});
     registerFallbackValue(<Map<String, dynamic>>[]);
     registerFallbackValue(DateTime(2026));
+    registerFallbackValue(
+      const FoodModel(name: '', defaultUnit: 'g', defaultAmount: 100, calories: 0, protein: 0, carbs: 0, fat: 0),
+    );
   });
 
   setUp(() {
     diet = MockDietApiService();
     water = MockWaterApiService();
+    food = MockFoodApiService();
     networkInfo = MockNetworkInfo();
     syncManager = MockSyncManager();
     repository = NutritionRepository(
       dietService: diet,
       waterService: water,
-      foodService: MockFoodApiService(),
+      foodService: food,
       analyticsService: MockAnalyticsApiService(),
       networkInfo: networkInfo,
       syncManager: syncManager,
@@ -637,5 +643,142 @@ void main() {
 
     expect(result.success, isFalse);
     expect(result.message, 'Sunucu hatası');
+  });
+
+  // --- G-87: internetsiz özel besin ve öğüne bağlanması ---
+
+  const FoodModel yogurt =
+      FoodModel(name: 'Ev yoğurdu', defaultUnit: 'g', defaultAmount: 100, calories: 60, protein: 4, carbs: 5, fat: 3);
+
+  PendingRecord queuedFood(String localId, String name) => PendingRecord(
+        key: 'k-$localId',
+        endpoint: '/nutrition/foods',
+        method: SyncManager.methodPost,
+        payload: <String, dynamic>{
+          'name': name,
+          'defaultUnit': 'g',
+          'defaultAmount': 100.0,
+          'calories': 60.0,
+          'protein': 4.0,
+          'carbs': 5.0,
+          'fat': 3.0,
+          'localId': localId,
+        },
+      );
+
+  ApiResponse<List<FoodModel>> foods(List<FoodModel> list) =>
+      ApiResponse<List<FoodModel>>(success: true, message: '', timestamp: '', data: list);
+
+  test('bağlantı yokken özel besin cihaz kimliğiyle kuyruğa girer; dönen besin bekliyor ve kimliğini taşır', () async {
+    when(() => networkInfo.isConnected).thenAnswer((_) async => false);
+
+    final ApiResponse<FoodModel> result = await repository.createFood(yogurt);
+
+    final Map<String, dynamic> payload = verify(
+      () => syncManager.addToQueue('/nutrition/foods', captureAny(), method: SyncManager.methodPost, preview: any(named: 'preview')),
+    ).captured.single as Map<String, dynamic>;
+    expect(payload['name'], 'Ev yoğurdu');
+    expect(payload['localId'], matches(uuidPattern));
+    verifyNever(() => food.createFood(any(), localId: any(named: 'localId')));
+    expect(result.success, isTrue);
+    expect(result.data!.isPending, isTrue);
+    expect(result.data!.isCustom, isTrue);
+    expect(result.data!.localId, payload['localId']);
+  });
+
+  test('bağlantı varken özel besin cihaz kimliğiyle sunucuya gider', () async {
+    when(() => networkInfo.isConnected).thenAnswer((_) async => true);
+    when(() => food.createFood(any(), localId: any(named: 'localId')))
+        .thenAnswer((_) async => ApiResponse<FoodModel>(success: true, message: '', timestamp: ''));
+
+    await repository.createFood(yogurt);
+
+    final String localId =
+        verify(() => food.createFood(yogurt, localId: captureAny(named: 'localId'))).captured.single as String;
+    expect(localId, matches(uuidPattern));
+    verifyNever(
+      () => syncManager.addToQueue(any(), any(), method: any(named: 'method'), preview: any(named: 'preview')),
+    );
+  });
+
+  test('özel besinlerim listesinde bekleyen besin en üstte görünür', () async {
+    when(() => food.getMyCustomFoods()).thenAnswer((_) async => foods(<FoodModel>[yogurt.copyWith(id: 5, name: 'Kefir')]));
+    when(() => syncManager.pendingRecords()).thenReturn(<PendingRecord>[queuedFood('LF1', 'Ev yoğurdu')]);
+
+    final ApiResponse<List<FoodModel>> result = await repository.getMyCustomFoods();
+
+    expect(result.data!.map((FoodModel f) => f.name).toList(), <String>['Ev yoğurdu', 'Kefir']);
+    expect(result.data!.first.isPending, isTrue);
+    expect(result.data!.first.localId, 'LF1');
+  });
+
+  test('internetsizken özel besin listesi önbellekte yoksa yalnız bekleyenler; bağlantı varken hata örtülmez', () async {
+    when(() => food.getMyCustomFoods()).thenAnswer((_) async => ApiResponse<List<FoodModel>>.error('Hata'));
+    when(() => syncManager.pendingRecords()).thenReturn(<PendingRecord>[queuedFood('LF1', 'Ev yoğurdu')]);
+
+    when(() => networkInfo.isConnected).thenAnswer((_) async => false);
+    final ApiResponse<List<FoodModel>> offline = await repository.getMyCustomFoods();
+    expect(offline.success, isTrue);
+    expect(offline.data!.single.localId, 'LF1');
+
+    when(() => networkInfo.isConnected).thenAnswer((_) async => true);
+    final ApiResponse<List<FoodModel>> online = await repository.getMyCustomFoods();
+    expect(online.success, isFalse);
+  });
+
+  test('aramada adı tutan bekleyen besin de bulunur, tutmayan eklenmez', () async {
+    when(() => food.searchFood('yoğ')).thenAnswer((_) async => foods(<FoodModel>[yogurt.copyWith(id: 7, name: 'Yoğurt')]));
+    when(() => syncManager.pendingRecords()).thenReturn(<PendingRecord>[
+      queuedFood('LF1', 'Ev yoğurdu'),
+      queuedFood('LF2', 'Kek'),
+    ]);
+
+    final ApiResponse<List<FoodModel>> result = await repository.searchFood('yoğ');
+
+    expect(result.data!.map((FoodModel f) => f.name).toList(), <String>['Ev yoğurdu', 'Yoğurt']);
+  });
+
+  test('kuyruktaki besine bağlanan öğün bağlantı varken de kuyruğa girer ve kuyruk hemen gönderilir', () async {
+    when(() => networkInfo.isConnected).thenAnswer((_) async => true);
+    when(() => syncManager.pendingRecords()).thenReturn(<PendingRecord>[queuedFood('LF1', 'Ev yoğurdu')]);
+    when(() => syncManager.syncPendingData()).thenAnswer((_) async {});
+
+    await repository.logMeal(
+      mealType: MealType.kahvalti,
+      items: <Map<String, dynamic>>[
+        <String, dynamic>{'foodId': null, 'foodLocalId': 'LF1', 'recipeId': null, 'amount': 150.0, 'note': null},
+      ],
+    );
+
+    final Map<String, dynamic> payload = verify(
+      () => syncManager.addToQueue(DietApiService.mealLogPath, captureAny(), method: any(named: 'method'), preview: any(named: 'preview')),
+    ).captured.single as Map<String, dynamic>;
+    final Map<String, dynamic> item = (payload['items'] as List<dynamic>).single as Map<String, dynamic>;
+    expect(item['foodLocalId'], 'LF1');
+    expect(item['foodId'], isNull);
+    verify(() => syncManager.syncPendingData()).called(1);
+    verifyNever(
+      () => diet.logMeal(mealTypeStr: any(named: 'mealTypeStr'), items: any(named: 'items'), date: any(named: 'date')),
+    );
+  });
+
+  test('besini sunucuya çoktan gitmiş öğün doğrudan gönderilir, cihaz kimliği korunur', () async {
+    when(() => networkInfo.isConnected).thenAnswer((_) async => true);
+    when(() => syncManager.pendingRecords()).thenReturn(const <PendingRecord>[]);
+
+    await repository.logMeal(
+      mealType: MealType.kahvalti,
+      items: <Map<String, dynamic>>[
+        <String, dynamic>{'foodId': null, 'foodLocalId': 'LF1', 'recipeId': null, 'amount': 150.0, 'note': null},
+      ],
+    );
+
+    final List<Map<String, dynamic>> sent = verify(
+      () => diet.logMeal(mealTypeStr: 'KAHVALTI', items: captureAny(named: 'items'), date: any(named: 'date')),
+    ).captured.single as List<Map<String, dynamic>>;
+    expect(sent.single['foodLocalId'], 'LF1');
+    verifyNever(
+      () => syncManager.addToQueue(any(), any(), method: any(named: 'method'), preview: any(named: 'preview')),
+    );
   });
 }

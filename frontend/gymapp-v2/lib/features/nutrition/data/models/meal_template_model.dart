@@ -151,6 +151,9 @@ class MealIngredientModel extends Equatable {
   final double cholesterol;
   final int? recipeId;
 
+  /// Sunucu kimliği henüz gelmemiş (internetsiz oluşturulan) özel besinin cihaz kimliği (G-87); [foodId] yoksa.
+  final String? foodLocalId;
+
   MealIngredientModel({
     this.id,
     this.foodId,
@@ -173,6 +176,7 @@ class MealIngredientModel extends Equatable {
     required this.potassium,
     required this.cholesterol,
     this.recipeId,
+    this.foodLocalId,
   });
 
   factory MealIngredientModel.fromJson(Map<String, dynamic> json) {
@@ -235,6 +239,7 @@ class MealIngredientModel extends Equatable {
     double? potassium,
     double? cholesterol,
     int? recipeId,
+    String? foodLocalId,
   }) {
     return MealIngredientModel(
       id: id ?? this.id,
@@ -258,6 +263,7 @@ class MealIngredientModel extends Equatable {
       potassium: potassium ?? this.potassium,
       cholesterol: cholesterol ?? this.cholesterol,
       recipeId: recipeId ?? this.recipeId,
+      foodLocalId: foodLocalId ?? this.foodLocalId,
     );
   }
 
@@ -294,5 +300,6 @@ class MealIngredientModel extends Equatable {
         potassium,
         cholesterol,
         recipeId,
+        foodLocalId,
       ];
 }

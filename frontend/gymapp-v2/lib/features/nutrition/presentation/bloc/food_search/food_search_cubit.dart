@@ -47,9 +47,15 @@ class FoodSearchCubit extends Cubit<FoodSearchState> {
     }
   }
 
+  /// Sepetteki kalem bu besin mi. Kimliği olmayan (internetsiz oluşturulan) besin cihaz kimliğiyle ayırt edilir;
+  /// yoksa `foodId` boş olan tarif kalemleriyle karışırdı (G-87).
+  static bool isSameFood(MealIngredientModel item, FoodModel food) =>
+      item.foodId == food.id && item.foodLocalId == (food.id == null ? food.localId : null) &&
+      item.ignoreOverride == !food.isOverridden;
+
   void toggleFoodSelection(FoodModel food) {
     final List<MealIngredientModel> newBasket = List.from(state.basket);
-    final index = newBasket.indexWhere((s) => s.foodId == food.id && s.ignoreOverride == !food.isOverridden);
+    final index = newBasket.indexWhere((s) => isSameFood(s, food));
 
     if (index >= 0) {
       newBasket.removeAt(index);
@@ -147,6 +153,8 @@ class FoodSearchCubit extends Cubit<FoodSearchState> {
         final double factor = item.amount / (item.defaultAmount > 0 ? item.defaultAmount : 100);
         return <String, dynamic>{
           'foodId': item.foodId,
+          // G-87: internetsiz oluşturulan besin (sunucu kimliği yok) cihaz kimliğiyle bağlanır.
+          if (item.foodLocalId != null) 'foodLocalId': item.foodLocalId,
           'recipeId': item.recipeId,
           'amount': item.amount,
           'note': item.note,
@@ -179,7 +187,7 @@ class FoodSearchCubit extends Cubit<FoodSearchState> {
 
   void addScannedFood(FoodModel food) {
     final List<MealIngredientModel> newBasket = List.from(state.basket);
-    final bool alreadyExists = newBasket.any((s) => s.foodId == food.id && s.ignoreOverride == !food.isOverridden);
+    final bool alreadyExists = newBasket.any((s) => isSameFood(s, food));
 
     if (!alreadyExists) {
       newBasket.add(food.toIngredient(food.defaultAmount, ignoreOverride: !food.isOverridden));

@@ -8,6 +8,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface FoodRepository extends JpaRepository<Food, Long> {
@@ -33,6 +34,13 @@ public interface FoodRepository extends JpaRepository<Food, Long> {
 	 * Oluşturan kullanıcıya göre besin sayısını döner (soft limit kontrolü).
 	 */
 	long countByCreatorId(Long creatorId);
+
+	/**
+	 * Oluşturanın cihaz kimliğiyle kaydettiği besin (G-87): tekrar koruması ve
+	 * internetsiz öğünün besine bağlanması. Oluşturana göre süzülür; başkasının besini bu
+	 * yolla bulunamaz.
+	 */
+	Optional<Food> findByCreatorIdAndLocalId(Long creatorId, String localId);
 
 	/**
 	 * Kullanıcının kendi oluşturduğu özel besinleri tarihe göre azalan sırayla getirir.

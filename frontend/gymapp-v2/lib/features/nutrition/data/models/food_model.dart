@@ -27,6 +27,13 @@ class FoodModel extends Equatable {
   final String? barcode;
   final DateTime? createdAt;
 
+  /// Cihazın özel besine verdiği kimlik (G-87). İnternetsiz oluşturulup sunucu kimliği henüz gelmemiş besinde
+  /// öğüne bağlanma bununla olur.
+  final String? localId;
+
+  /// Kuyrukta bekleyen (sunucuya henüz gitmemiş) özel besin.
+  bool get isPending => id == null && localId != null;
+
   const FoodModel({
     this.id,
     required this.name,
@@ -52,6 +59,7 @@ class FoodModel extends Equatable {
     this.isCustom = false,
     this.barcode,
     this.createdAt,
+    this.localId,
   });
 
   factory FoodModel.fromJson(Map<String, dynamic> json) {
@@ -83,6 +91,7 @@ class FoodModel extends Equatable {
           json['createdAt'] != null
               ? DateTime.parse(json['createdAt'] as String)
               : null,
+      localId: json['localId'] as String?,
     );
   }
 
@@ -129,7 +138,7 @@ class FoodModel extends Equatable {
   }
 
   @override
-  List<Object?> get props => [id, name, isOverridden, barcode, isBrandVerified];
+  List<Object?> get props => [id, name, isOverridden, barcode, isBrandVerified, localId];
 
   FoodModel copyWith({
     int? id,
@@ -185,7 +194,9 @@ class FoodModel extends Equatable {
 
   MealIngredientModel toIngredient(double amount, {bool ignoreOverride = false}) {
     return MealIngredientModel(
-      foodId: id!,
+      // İnternetsiz oluşturulan besinin sunucu kimliği yok; öğüne cihaz kimliğiyle bağlanır (G-87).
+      foodId: id,
+      foodLocalId: id == null ? localId : null,
       foodName: name,
       brand: brand,
       amount: amount,

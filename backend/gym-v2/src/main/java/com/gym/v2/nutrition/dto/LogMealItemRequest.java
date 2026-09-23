@@ -5,8 +5,10 @@ import java.math.BigDecimal;
 
 /**
  * Çoklu öğün kaydı için kullanılan malzeme DTO'su. {@code localId}: cihazın kaleme
- * verdiği kimlik (G-72).
+ * verdiği kimlik (G-72). {@code foodLocalId}: aynı kullanıcının internetsiz oluşturduğu,
+ * sunucu kimliği henüz cihaza gelmemiş besin (G-87); {@code foodId} yoksa kullanılır.
  */
 public record LogMealItemRequest(Long foodId, Long recipeId, BigDecimal amount, String note,
-		@Size(max = 36, message = "Yerel kimlik en fazla 36 karakter olabilir.") String localId) {
+		@Size(max = 36, message = "Yerel kimlik en fazla 36 karakter olabilir.") String localId,
+		@Size(max = 36, message = "Yerel kimlik en fazla 36 karakter olabilir.") String foodLocalId) {
 }

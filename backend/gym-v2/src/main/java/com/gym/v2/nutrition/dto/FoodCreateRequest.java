@@ -8,7 +8,8 @@ import java.math.BigDecimal;
 
 /**
  * Özel Besin Oluşturma İstek DTO'su (FoodCreateRequest). Pure Java record ve Jakarta
- * Validation kurallarına uygundur.
+ * Validation kurallarına uygundur. {@code localId}: cihazın besine verdiği kimlik (G-87);
+ * aynı kimlikle ikinci istek yeni besin açmaz.
  */
 public record FoodCreateRequest(
 		@NotBlank(message = "Besin adı zorunludur.") @Size(max = 150,
@@ -51,5 +52,7 @@ public record FoodCreateRequest(
 
 		@DecimalMin(value = "0", message = "{validation.nutrition.targetFat.min}") BigDecimal monoFat,
 
-		@DecimalMin(value = "0", message = "{validation.nutrition.targetFat.min}") BigDecimal polyFat) {
+		@DecimalMin(value = "0", message = "{validation.nutrition.targetFat.min}") BigDecimal polyFat,
+
+		@Size(max = 36, message = "Yerel kimlik en fazla 36 karakter olabilir.") String localId) {
 }

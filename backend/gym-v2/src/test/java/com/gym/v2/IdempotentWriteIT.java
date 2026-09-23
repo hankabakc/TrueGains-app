@@ -214,7 +214,7 @@ class IdempotentWriteIT extends IntegrationTestBase {
 		actingAs(client);
 
 		LogMealRequest request = new LogMealRequest(MealType.KAHVALTI, MEAL_TIME,
-				List.of(new LogMealItemRequest(food.getId(), null, new BigDecimal("50"), null, "yerel-meal-1")));
+				List.of(new LogMealItemRequest(food.getId(), null, new BigDecimal("50"), null, "yerel-meal-1", null)));
 		mealLogService.logMealEntry(request);
 		entityManager.flush();
 		entityManager.clear();
@@ -234,12 +234,12 @@ class IdempotentWriteIT extends IntegrationTestBase {
 		actingAs(client);
 
 		mealLogService.logMealEntry(new LogMealRequest(MealType.KAHVALTI, MEAL_TIME,
-				List.of(new LogMealItemRequest(food.getId(), null, new BigDecimal("50"), null, "yerel-meal-a"))));
+				List.of(new LogMealItemRequest(food.getId(), null, new BigDecimal("50"), null, "yerel-meal-a", null))));
 		entityManager.flush();
 		entityManager.clear();
 
 		mealLogService.logMealEntry(new LogMealRequest(MealType.KAHVALTI, MEAL_TIME,
-				List.of(new LogMealItemRequest(food.getId(), null, new BigDecimal("80"), null, "yerel-meal-b"))));
+				List.of(new LogMealItemRequest(food.getId(), null, new BigDecimal("80"), null, "yerel-meal-b", null))));
 		entityManager.flush();
 		entityManager.clear();
 
@@ -255,8 +255,8 @@ class IdempotentWriteIT extends IntegrationTestBase {
 		AppUser client = createUser("idem_meal_db@test.com", UserRole.CLIENT);
 		Food food = savedFood();
 		actingAs(client);
-		mealLogService.logMealEntry(new LogMealRequest(MealType.KAHVALTI, MEAL_TIME,
-				List.of(new LogMealItemRequest(food.getId(), null, new BigDecimal("50"), null, "yerel-meal-db"))));
+		mealLogService.logMealEntry(new LogMealRequest(MealType.KAHVALTI, MEAL_TIME, List
+			.of(new LogMealItemRequest(food.getId(), null, new BigDecimal("50"), null, "yerel-meal-db", null))));
 		entityManager.flush();
 		MealEntry entry = mealsOf(client).getFirst();
 
@@ -410,6 +410,103 @@ class IdempotentWriteIT extends IntegrationTestBase {
 		second.setLocalId("yerel-olcum-db");
 
 		assertThatThrownBy(() -> measurementRepository.saveAndFlush(second))
+			.isInstanceOf(DataIntegrityViolationException.class);
+	}
+
+	// --- G-87: internetsiz özel besin — tekrar koruması ve öğünün besine cihaz
+	// kimliğiyle bağlanması ---
+
+	private String customFoodJson(String localId) throws Exception {
+		return objectMapper.writeValueAsString(Map.of("name", "Ev yoğurdu", "defaultUnit", "g", "defaultAmount", 100,
+				"calories", 60, "protein", 4, "carbs", 5, "fat", 3, "localId", localId));
+	}
+
+	private String mealWithQueuedFoodJson(String foodLocalId) throws Exception {
+		return objectMapper.writeValueAsString(Map.of("mealType", "KAHVALTI", "takenDatetime", MEAL_TIME.toString(),
+				"items", List.of(Map.of("amount", 150, "localId", "yerel-kalem-1", "foodLocalId", foodLocalId))));
+	}
+
+	@Test
+	void customFood_queuedRequestTwice_isStoredOnce() throws Exception {
+		AppUser client = createUser("idem_food@test.com", UserRole.CLIENT);
+
+		for (int i = 0; i < 2; i++) {
+			mockMvc
+				.perform(post("/api/v1/nutrition/foods").header("Authorization", bearerTokenFor(client))
+					.contentType(MediaType.APPLICATION_JSON)
+					.content(customFoodJson("yerel-besin-1")))
+				.andExpect(status().isOk());
+		}
+		entityManager.flush();
+		entityManager.clear();
+
+		assertThat(foodRepository.findByCreatorIdOrderByCreatedAtDesc(client.getId())).extracting(Food::getLocalId)
+			.containsExactly("yerel-besin-1");
+	}
+
+	@Test
+	void mealLog_itemByFoodLocalId_isLinkedToOwnQueuedFood() throws Exception {
+		AppUser client = createUser("food_link@test.com", UserRole.CLIENT);
+		// Kuyruk sırası (K2-08): önce besin, sonra ona cihaz kimliğiyle bağlanan öğün.
+		mockMvc
+			.perform(post("/api/v1/nutrition/foods").header("Authorization", bearerTokenFor(client))
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(customFoodJson("yerel-besin-2")))
+			.andExpect(status().isOk());
+
+		mockMvc
+			.perform(post("/api/v1/nutrition/meal-logs/log").header("Authorization", bearerTokenFor(client))
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(mealWithQueuedFoodJson("yerel-besin-2")))
+			.andExpect(status().isOk());
+		entityManager.flush();
+		entityManager.clear();
+
+		Food food = foodRepository.findByCreatorIdAndLocalId(client.getId(), "yerel-besin-2").orElseThrow();
+		MealItem item = mealsOf(client).getFirst().getItems().getFirst();
+		assertThat(item.getFood().getId()).isEqualTo(food.getId());
+		assertThat(item.getLocalId()).isEqualTo("yerel-kalem-1");
+	}
+
+	@Test
+	void mealLog_foodLocalIdOfAnotherUser_isNotFoundAndNothingStored() throws Exception {
+		AppUser owner = createUser("food_owner@test.com", UserRole.CLIENT);
+		AppUser other = createUser("food_other@test.com", UserRole.CLIENT);
+		mockMvc
+			.perform(post("/api/v1/nutrition/foods").header("Authorization", bearerTokenFor(owner))
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(customFoodJson("baskasinin-besini")))
+			.andExpect(status().isOk());
+
+		mockMvc
+			.perform(post("/api/v1/nutrition/meal-logs/log").header("Authorization", bearerTokenFor(other))
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(mealWithQueuedFoodJson("baskasinin-besini")))
+			.andExpect(status().isNotFound());
+		entityManager.flush();
+		entityManager.clear();
+
+		assertThat(mealsOf(other).stream().flatMap(entry -> entry.getItems().stream()).toList()).isEmpty();
+	}
+
+	@Test
+	void database_rejectsDuplicateFoodLocalIdForSameCreator() {
+		AppUser client = createUser("food_db@test.com", UserRole.CLIENT);
+		Food first = savedFood();
+		first.setGlobal(false);
+		first.setCreatorId(client.getId());
+		first.setLocalId("yerel-besin-db");
+		foodRepository.saveAndFlush(first);
+
+		Food second = new Food();
+		second.setName("kopya");
+		second.setDefaultUnit("g");
+		second.setDefaultAmount(new BigDecimal("100"));
+		second.setGlobal(false);
+		second.setCreatorId(client.getId());
+		second.setLocalId("yerel-besin-db");
+
+		assertThatThrownBy(() -> foodRepository.saveAndFlush(second))
 			.isInstanceOf(DataIntegrityViolationException.class);
 	}
 

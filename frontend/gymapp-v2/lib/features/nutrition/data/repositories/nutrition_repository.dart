@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:stomp_dart_client/stomp_dart_client.dart';
 import 'package:gymapp_v2/core/constants/storage_keys.dart';
@@ -27,7 +29,7 @@ import '../services/analytics_api_service.dart';
 
 class NutritionRepository {
   /// Öğün kaydı isteğinin kalem alanları (`LogMealItemRequest`); kalanı yalnızca cihazda gösterilir (G-83).
-  static const Set<String> _serverItemKeys = <String>{'foodId', 'recipeId', 'amount', 'note', 'localId'};
+  static const Set<String> _serverItemKeys = <String>{'foodId', 'recipeId', 'amount', 'note', 'localId', 'foodLocalId'};
 
   final DietApiService _dietService;
   final WaterApiService _waterService;
@@ -243,16 +245,51 @@ class NutritionRepository {
   }
 
   Future<ApiResponse<List<FoodModel>>> searchFood(String query) async {
-    return _foodService.searchFood(query);
+    final ApiResponse<List<FoodModel>> res = await _foodService.searchFood(query);
+    // G-87: internetsiz oluşturulup kuyrukta bekleyen özel besin de aramada bulunur.
+    final String q = query.trim().toLowerCase();
+    final List<FoodModel> pending = _pendingFoods()
+        .where((FoodModel f) => f.name.toLowerCase().contains(q) || (f.brand?.toLowerCase().contains(q) ?? false))
+        .toList();
+    if (pending.isEmpty) return res;
+    // Bağlantı varken sunucu hatası örtülmez; internetsiz ve katalog yoksa en azından bekleyenler görünür.
+    if (!res.success && await _networkInfo.isConnected) return res;
+    return ApiResponse<List<FoodModel>>(
+      success: true,
+      message: res.message,
+      timestamp: res.timestamp,
+      data: <FoodModel>[...pending, ...?(res.success ? res.data : null)],
+    );
   }
+
+  /// Kuyrukta bekleyen (internetsiz oluşturulmuş) özel besinler, yeniden eskiye (G-87).
+  List<FoodModel> _pendingFoods() => <FoodModel>[
+        for (final PendingRecord r in _syncManager.pendingRecords().reversed)
+          if (r.method == SyncManager.methodPost && r.endpoint == FoodApiService.foodsPath)
+            FoodModel.fromJson(<String, dynamic>{...r.payload, 'isCustom': true}),
+      ];
 
   /// Telefondaki besin kataloğunu indirir / tazeler (KR16, G-71); yanıtı okuma önbelleği saklar.
   Future<ApiResponse<List<FoodModel>>> refreshFoodCatalog() {
     return _foodService.getCatalog();
   }
 
-  Future<ApiResponse<FoodModel>> createFood(FoodModel food) {
-    return _foodService.createFood(food);
+  Future<ApiResponse<FoodModel>> createFood(FoodModel food) async {
+    // Tekrar koruması ve öğüne bağlanma (G-87): besin cihazda kimlik alır; çevrimiçi ve kuyruk yolu aynı kimliği taşır.
+    final String localId = const Uuid().v4();
+    if (await _networkInfo.isConnected) {
+      return _foodService.createFood(food, localId: localId);
+    }
+
+    // KR13 (G-87): bağlantı yoksa özel besin kuyruğa girer; öğüne sunucu kimliği yerine bu kimlikle eklenir.
+    final Map<String, dynamic> payload = <String, dynamic>{...food.toCreateJson(), 'localId': localId};
+    await _syncManager.addToQueue(FoodApiService.foodsPath, payload);
+    return ApiResponse<FoodModel>(
+      success: true,
+      message: 'Bağlantı yok. Besin internet geldiğinde kaydedilecek.',
+      timestamp: DateTime.now().toIso8601String(),
+      data: FoodModel.fromJson(<String, dynamic>{...payload, 'isCustom': true}),
+    );
   }
 
   Future<ApiResponse<FoodModel>> getFoodDetails(int id, {bool ignoreOverride = false}) {
@@ -357,8 +394,18 @@ class NutritionRepository {
     return _foodService.getOverriddenFoods();
   }
 
-  Future<ApiResponse<List<FoodModel>>> getMyCustomFoods() {
-    return _foodService.getMyCustomFoods();
+  /// Kendi özel besinlerim; kuyrukta bekleyenler en üstte (G-87). İnternetsiz ve liste önbellekte yoksa yalnız onlar.
+  Future<ApiResponse<List<FoodModel>>> getMyCustomFoods() async {
+    final ApiResponse<List<FoodModel>> res = await _foodService.getMyCustomFoods();
+    final List<FoodModel> pending = _pendingFoods();
+    if (pending.isEmpty) return res;
+    if (!res.success && await _networkInfo.isConnected) return res;
+    return ApiResponse<List<FoodModel>>(
+      success: true,
+      message: res.message,
+      timestamp: res.timestamp,
+      data: <FoodModel>[...pending, ...?(res.success ? res.data : null)],
+    );
   }
 
   // --- Meal Templates ---
@@ -407,7 +454,18 @@ class NutritionRepository {
         },
     ];
 
-    if (await _networkInfo.isConnected) {
+    final bool connected = await _networkInfo.isConnected;
+    // G-87: kuyrukta bekleyen (internetsiz oluşturulan) besine bağlanan öğün de kuyruktan gider; besin kuyrukta ondan
+    // önce durduğu için önce o gönderilir (K2-08). Doğrudan gönderilseydi sunucu besini henüz tanımazdı.
+    bool waitsForQueuedFood = false;
+    if (serverItems.any((Map<String, dynamic> i) => i['foodLocalId'] != null)) {
+      final Set<String> queuedFoods = <String>{
+        for (final FoodModel f in _pendingFoods())
+          if (f.localId != null) f.localId!,
+      };
+      waitsForQueuedFood = serverItems.any((Map<String, dynamic> i) => queuedFoods.contains(i['foodLocalId']));
+    }
+    if (connected && !waitsForQueuedFood) {
       return _dietService.logMeal(mealTypeStr: mealType.toBackendString(), items: serverItems, date: date);
     }
 
@@ -421,9 +479,15 @@ class NutritionRepository {
       },
       preview: itemsWithId,
     );
+    if (connected) {
+      // Bağlantı var: kuyruk hemen gönderilir (besin, sonra öğün).
+      unawaited(_syncManager.syncPendingData());
+    }
     return ApiResponse<MealEntryModel>(
       success: true,
-      message: 'Bağlantı yok. Öğün internet geldiğinde kaydedilecek.',
+      message: connected
+          ? 'Öğün, yeni eklenen besinle birlikte kaydediliyor.'
+          : 'Bağlantı yok. Öğün internet geldiğinde kaydedilecek.',
       timestamp: DateTime.now().toIso8601String(),
     );
   }

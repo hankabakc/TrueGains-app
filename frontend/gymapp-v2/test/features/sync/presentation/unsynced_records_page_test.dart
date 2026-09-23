@@ -75,6 +75,7 @@ void main() {
     expect(unsyncedRecordLabel('/nutrition/water/9'), equals('Su silme'));
     expect(unsyncedRecordLabel('/measurements'), equals('Ölçüm'));
     expect(unsyncedRecordLabel('/measurements/5'), equals('Ölçüm silme'));
+    expect(unsyncedRecordLabel('/nutrition/foods'), equals('Özel besin'));
     expect(unsyncedRecordLabel('/baska'), equals('Kayıt'));
   });
 }

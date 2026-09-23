@@ -389,14 +389,21 @@ class _FoodSearchPageState extends State<FoodSearchPage> with SingleTickerProvid
   }
 
   Widget _buildFoodTile(BuildContext context, FoodSearchCubit cubit, FoodSearchState state, FoodModel food, {bool isManual = false}) {
-    final isSelected = state.basket.any((s) => s.foodId == food.id && s.ignoreOverride == !food.isOverridden);
+    final isSelected = state.basket.any((s) => FoodSearchCubit.isSameFood(s, food));
     return GlassContainer(
       margin: const EdgeInsets.only(bottom: AppSpacing.sm),
       child: ListTile(
         title: Row(
           children: [
             Expanded(child: Text(food.name, style: AppTextStyles.listTitle)),
-            if (isManual)
+            // G-87: internetsiz oluşturulan, sunucuya henüz gitmemiş özel besin.
+            if (food.isPending)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(color: AppColors.glassWhite, borderRadius: BorderRadius.circular(4)),
+                child: Text('BEKLİYOR', style: AppTextStyles.tagText.copyWith(color: AppColors.textMuted, fontSize: 8)),
+              )
+            else if (isManual)
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(color: AppColors.glassWhite, borderRadius: BorderRadius.circular(4)),
@@ -414,6 +421,8 @@ class _FoodSearchPageState extends State<FoodSearchPage> with SingleTickerProvid
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
+            // Ayrıntı sayfası sunucu kimliğiyle açılır; bekleyen besinin kimliği yok (G-87).
+            if (food.id != null)
             IconButton(
               icon: const Icon(Icons.info_outline_rounded, color: AppColors.textMuted, size: 22),
               onPressed: () async {

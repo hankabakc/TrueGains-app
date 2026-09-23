@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gymapp_v2/core/network/api_response.dart';
+import 'package:gymapp_v2/features/nutrition/data/models/food_model.dart';
 import 'package:gymapp_v2/features/nutrition/data/models/meal_entry_model.dart';
 import 'package:gymapp_v2/features/nutrition/data/models/meal_template_model.dart';
 import 'package:gymapp_v2/features/nutrition/data/repositories/nutrition_repository.dart';
@@ -67,6 +68,77 @@ void main() {
     expect(item['calories'], 190);
     expect(item['protein'], 6.5);
     expect(item['potassium'], 200);
+    await cubit.close();
+  });
+
+  // --- G-87: internetsiz oluşturulan (sunucu kimliği olmayan) özel besin ---
+
+  const FoodModel pendingFood = FoodModel(
+    name: 'Ev yoğurdu',
+    defaultUnit: 'g',
+    defaultAmount: 100,
+    calories: 60,
+    protein: 4,
+    carbs: 5,
+    fat: 3,
+    isCustom: true,
+    localId: 'LF1',
+  );
+
+  MealIngredientModel recipeItem() => MealIngredientModel(
+        foodName: 'Mercimek çorbası',
+        amount: 1,
+        defaultAmount: 1,
+        protein: 9,
+        carbs: 20,
+        fat: 4,
+        calories: 150,
+        isBrandVerified: false,
+        ignoreOverride: true,
+        isOverridden: false,
+        sugar: 0,
+        fiber: 0,
+        sodium: 0,
+        potassium: 0,
+        cholesterol: 0,
+        recipeId: 3,
+      );
+
+  test('bekleyen besin sepete eklenir, kimliği boş tarif kalemiyle karışmaz; ikinci dokunuş yalnız onu çıkarır', () async {
+    final FoodSearchCubit cubit = FoodSearchCubit(repository);
+    cubit.addIngredientsToBasket(<MealIngredientModel>[recipeItem()]);
+
+    cubit.toggleFoodSelection(pendingFood);
+
+    expect(cubit.state.basket, hasLength(2));
+    expect(cubit.state.basket.last.foodId, isNull);
+    expect(cubit.state.basket.last.foodLocalId, 'LF1');
+
+    cubit.toggleFoodSelection(pendingFood);
+
+    expect(cubit.state.basket.single.recipeId, 3);
+    await cubit.close();
+  });
+
+  test('öğün kaydında bekleyen besinin cihaz kimliği gider, diğer kalemde bu alan olmaz', () async {
+    final FoodSearchCubit cubit = FoodSearchCubit(repository);
+    cubit.addIngredientsToBasket(<MealIngredientModel>[recipeItem()]);
+    cubit.toggleFoodSelection(pendingFood);
+
+    await cubit.saveAll(mealType: MealType.kahvalti);
+
+    final List<Map<String, dynamic>> items =
+        verify(
+              () => repository.logMeal(
+                mealType: MealType.kahvalti,
+                items: captureAny(named: 'items'),
+                date: any(named: 'date'),
+              ),
+            ).captured.single
+            as List<Map<String, dynamic>>;
+    expect(items.first.containsKey('foodLocalId'), isFalse);
+    expect(items.last['foodLocalId'], 'LF1');
+    expect(items.last['foodId'], isNull);
     await cubit.close();
   });
 }

@@ -11,6 +11,8 @@ import '../models/recipe_model.dart';
 import 'base_nutrition_service.dart';
 
 class FoodApiService extends BaseNutritionService {
+  static const String foodsPath = '/nutrition/foods';
+
   FoodApiService(super.dioClient);
 
   Future<ApiResponse<List<FoodModel>>> searchFood(String query) async {
@@ -92,11 +94,12 @@ class FoodApiService extends BaseNutritionService {
     }
   }
 
-  Future<ApiResponse<FoodModel>> createFood(FoodModel food) async {
+  /// [localId]: cihazın besine verdiği kimlik; sunucu aynı kimlikle ikinci besin açmaz (G-87).
+  Future<ApiResponse<FoodModel>> createFood(FoodModel food, {String? localId}) async {
     try {
       final response = await dioClient.dio.post<Map<String, dynamic>>(
-        '/nutrition/foods',
-        data: food.toCreateJson(),
+        foodsPath,
+        data: <String, dynamic>{...food.toCreateJson(), if (localId != null) 'localId': localId},
       );
       return ApiResponse.fromJson(
         response.data ?? <String, dynamic>{},
