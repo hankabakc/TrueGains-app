@@ -156,6 +156,14 @@ public class TrainingBlockService {
 		// kuyruk kaydı silmeden "aktarılamadı" gösterir. Sürüm göndermeyen eski istemci
 		// eskisi gibi yazar.
 		if (request.version() != null && !request.version().equals(block.getVersion())) {
+			// K2-09: Yanıtı yolda kaybolan istek tekrar gönderildiğinde sunucu sürümü 1
+			// artmış
+			// ve içerik zaten uygulanmış olabilir. Bu durumda 409 yerine güncel hâl 200
+			// ile dönülür;
+			// aksi hâlde istemci başarılı işlemi sahte "aktarılamadı" olarak görür.
+			if (isIdempotentRetry(block, request)) {
+				return trainingMapper.toTrainingBlockDTO(block);
+			}
 			throw new ConflictException(
 					"Program başka bir cihazda değiştirilmiş; sunucudaki hâli geçerli. Programı yenileyip tekrar düzenleyin.");
 		}
@@ -182,6 +190,32 @@ public class TrainingBlockService {
 				.convertAndSend("/topic/training/" + block.getClient().getId(), "REFRESH_REQUIRED"));
 		}
 		return trainingMapper.toTrainingBlockDTO(saved);
+	}
+
+	/**
+	 * K2-09: Program güncelleme isteğinin daha önce sunucuda başarıyla uygulanmış bir
+	 * işlemin ağ zaman aşımı tekrarı olup olmadığını kontrol eder.
+	 */
+	private boolean isIdempotentRetry(TrainingBlock block, TrainingBlockDTO request) {
+		if (block.getVersion() == null || request.version() == null) {
+			return false;
+		}
+		if (!block.getVersion().equals(request.version() + 1L)) {
+			return false;
+		}
+		if (!Objects.equals(block.getName(), request.name())) {
+			return false;
+		}
+		if (!Objects.equals(block.getDescription(), request.description())) {
+			return false;
+		}
+		Integer expectedWeeks = request.durationWeeks() != null ? request.durationWeeks() : 4;
+		if (!Objects.equals(block.getDurationWeeks(), expectedWeeks)) {
+			return false;
+		}
+		int requestDaysCount = request.workoutDays() != null ? request.workoutDays().size() : 0;
+		int blockDaysCount = block.getWorkoutDays() != null ? block.getWorkoutDays().size() : 0;
+		return requestDaysCount == blockDaysCount;
 	}
 
 	@Transactional

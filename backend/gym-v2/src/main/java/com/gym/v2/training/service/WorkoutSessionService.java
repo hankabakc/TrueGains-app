@@ -12,10 +12,13 @@ import com.gym.v2.training.dto.WorkoutLogRequestDTO;
 import com.gym.v2.training.dto.WorkoutSessionDTO;
 import com.gym.v2.training.dto.WorkoutSessionRequestDTO;
 import com.gym.v2.training.entity.Exercise;
+import com.gym.v2.training.entity.WorkoutDay;
 import com.gym.v2.training.entity.WorkoutExercise;
 import com.gym.v2.training.entity.WorkoutLog;
 import com.gym.v2.training.entity.WorkoutSession;
 import com.gym.v2.training.repository.ExerciseRepository;
+import com.gym.v2.training.repository.TrainingBlockRepository;
+import com.gym.v2.training.repository.WorkoutDayRepository;
 import com.gym.v2.training.repository.WorkoutExerciseRepository;
 import com.gym.v2.training.repository.WorkoutLogRepository;
 import com.gym.v2.training.repository.WorkoutSessionRepository;
@@ -49,6 +52,10 @@ public class WorkoutSessionService {
 
 	private final WeeklyProgressService weeklyProgressService;
 
+	private final TrainingBlockRepository trainingBlockRepository;
+
+	private final WorkoutDayRepository workoutDayRepository;
+
 	private final TrainingMapper trainingMapper;
 
 	private final Clock clock;
@@ -56,7 +63,8 @@ public class WorkoutSessionService {
 	public WorkoutSessionService(WorkoutSessionRepository workoutSessionRepository, WorkoutLogRepository logRepository,
 			WorkoutExerciseRepository workoutExerciseRepository, ExerciseRepository exerciseRepository,
 			AppUserRepository userRepository, ClientRepository clientRepository,
-			WeeklyProgressService weeklyProgressService, TrainingMapper trainingMapper, Clock clock) {
+			WeeklyProgressService weeklyProgressService, TrainingBlockRepository trainingBlockRepository,
+			WorkoutDayRepository workoutDayRepository, TrainingMapper trainingMapper, Clock clock) {
 		this.workoutSessionRepository = workoutSessionRepository;
 		this.logRepository = logRepository;
 		this.workoutExerciseRepository = workoutExerciseRepository;
@@ -64,6 +72,8 @@ public class WorkoutSessionService {
 		this.userRepository = userRepository;
 		this.clientRepository = clientRepository;
 		this.weeklyProgressService = weeklyProgressService;
+		this.trainingBlockRepository = trainingBlockRepository;
+		this.workoutDayRepository = workoutDayRepository;
 		this.trainingMapper = trainingMapper;
 		this.clock = clock;
 	}
@@ -97,8 +107,34 @@ public class WorkoutSessionService {
 		WorkoutSession session = new WorkoutSession(currentUser, request.workoutDayName(), request.totalSeconds());
 		// Sunucu kimliği olmayan (0 ya da negatif) program/gün yazılmaz; aşağıda
 		// egzersizden alınır (G-74).
-		session.setTrainingBlockId(positiveOrNull(request.trainingBlockId()));
-		session.setWorkoutDayId(positiveOrNull(request.workoutDayId()));
+		final Long requestedBlockId = positiveOrNull(request.trainingBlockId());
+		final Long requestedDayId = positiveOrNull(request.workoutDayId());
+		Long effectiveBlockId = requestedBlockId;
+
+		// K1-07: Sahiplik doğrulaması — yabancı programa veya güne oturum bağlanamaz
+		// (IDOR koruması).
+		if (requestedDayId != null) {
+			if (requestedBlockId != null) {
+				workoutDayRepository
+					.findByIdAndBlockIdAndClientId(requestedDayId, requestedBlockId, currentUser.getId())
+					.orElseThrow(() -> new NotFoundException(
+							"Antrenman günü bulunamadı veya yetkiniz yok: " + requestedDayId));
+			}
+			else {
+				WorkoutDay day = workoutDayRepository.findByIdAndClientId(requestedDayId, currentUser.getId())
+					.orElseThrow(() -> new NotFoundException(
+							"Antrenman günü bulunamadı veya yetkiniz yok: " + requestedDayId));
+				effectiveBlockId = day.getTrainingBlock().getId();
+			}
+		}
+		else if (requestedBlockId != null) {
+			trainingBlockRepository.findByIdAndClientId(requestedBlockId, currentUser.getId())
+				.orElseThrow(() -> new NotFoundException(
+						"Antrenman programı bulunamadı veya yetkiniz yok: " + requestedBlockId));
+		}
+
+		session.setTrainingBlockId(effectiveBlockId);
+		session.setWorkoutDayId(requestedDayId);
 		session.setLocalId(request.localId());
 		session.onPersist(clock.instant());
 

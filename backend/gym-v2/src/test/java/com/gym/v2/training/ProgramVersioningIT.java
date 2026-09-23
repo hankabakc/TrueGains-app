@@ -132,4 +132,56 @@ class ProgramVersioningIT extends IntegrationTestBase {
 		assertThat(after.getVersion()).isEqualTo(startVersion + 1);
 	}
 
+	/**
+	 * K2-09: Yanıtı yolda kaybolan istek aynı sürüm ve içerikle yeniden gönderildiğinde
+	 * sunucu sürümü 1 artmış ve içerik zaten uygulanmıştır. 409 yerine 200 döner.
+	 */
+	@Test
+	void update_networkRetryWithAppliedVersion_isIdempotentOkAndProgramUnchanged() throws Exception {
+		AppUser client = createUser("ver_retry@test.com", UserRole.CLIENT);
+		TrainingBlock saved = blockRepository.saveAndFlush(new TrainingBlock("Ilk Ad", "Aciklama", null, client,
+				LocalDate.of(2026, 1, 1), LocalDate.of(2026, 2, 1)));
+		long startVersion = saved.getVersion();
+		entityManager.clear();
+
+		// İlk istek başarılı: sürüm artar
+		mockMvc
+			.perform(put("/api/v1/training/programs/personal/" + saved.getId())
+				.header("Authorization", bearerTokenFor(client))
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(updateJson("Guncellenmis Ad", startVersion)))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.data.version").value(startVersion + 1))
+			.andExpect(jsonPath("$.data.name").value("Guncellenmis Ad"));
+		entityManager.flush();
+		entityManager.clear();
+
+		// Ağ zaman aşımı nedeniyle aynı isteğin (startVersion ile) tekrarı:
+		// 409 yerine idempotent 200 döner
+		mockMvc
+			.perform(put("/api/v1/training/programs/personal/" + saved.getId())
+				.header("Authorization", bearerTokenFor(client))
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(updateJson("Guncellenmis Ad", startVersion)))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.data.version").value(startVersion + 1))
+			.andExpect(jsonPath("$.data.name").value("Guncellenmis Ad"));
+		entityManager.flush();
+		entityManager.clear();
+
+		// Farklı içerikle eski sürüm gelirse hâlâ 409 döner (gerçek çakışma)
+		mockMvc
+			.perform(put("/api/v1/training/programs/personal/" + saved.getId())
+				.header("Authorization", bearerTokenFor(client))
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(updateJson("Baska Bir Cihaz", startVersion)))
+			.andExpect(status().isConflict());
+		entityManager.flush();
+		entityManager.clear();
+
+		TrainingBlock after = blockRepository.findById(saved.getId()).orElseThrow();
+		assertThat(after.getName()).isEqualTo("Guncellenmis Ad");
+		assertThat(after.getVersion()).isEqualTo(startVersion + 1);
+	}
+
 }

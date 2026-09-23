@@ -108,8 +108,8 @@ public class WeeklyProgressService {
 
 	@Transactional
 	public void upsertWeeklyProgress(Long userId, Long trainingBlockId, LocalDate weekStartDate) {
-		TrainingBlock block = blockRepository.findById(trainingBlockId)
-			.orElseThrow(() -> new NotFoundException("Antrenman programı bulunamadı."));
+		TrainingBlock block = blockRepository.findByIdAndClientId(trainingBlockId, userId)
+			.orElseThrow(() -> new NotFoundException("Antrenman programı bulunamadı veya yetkiniz yok."));
 
 		int targetDays = 0;
 		if (block.getWorkoutDays() != null) {

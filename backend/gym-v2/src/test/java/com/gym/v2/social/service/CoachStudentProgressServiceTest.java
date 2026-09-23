@@ -11,6 +11,7 @@ import com.gym.v2.social.dto.CreateProgressRequest;
 import com.gym.v2.social.entity.CoachStudentProgress;
 import com.gym.v2.social.repository.CoachStudentProgressRepository;
 import java.util.Optional;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -68,6 +69,11 @@ class CoachStudentProgressServiceTest {
 		AppUser coachUser = AppUser.builder().email("coach@test.com").build();
 		ReflectionTestUtils.setField(coachUser, "id", 2L);
 		when(userRepository.findByEmail("coach@test.com")).thenReturn(Optional.of(coachUser));
+	}
+
+	@AfterEach
+	void tearDown() {
+		SecurityContextHolder.clearContext();
 	}
 
 	private void coachOwnsClient() {

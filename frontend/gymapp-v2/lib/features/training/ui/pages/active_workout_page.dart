@@ -44,7 +44,20 @@ class _ActiveWorkoutPageState extends State<ActiveWorkoutPage> {
   void initState() {
     super.initState();
     final ActiveWorkoutBloc bloc = context.read<ActiveWorkoutBloc>();
-    if (bloc.state.workoutDay?.id != widget.workoutDay.id) {
+    final currentDay = bloc.state.workoutDay;
+    // K1-08: İnternetsiz oluşturulan programla antrenmana başlandığında gün negatif geçici
+    // kimlik alır (G-74). İnternet gelip program sunucuya gidince liste gerçek kimliklerle yenilenir.
+    // Aynı gün panelden yeniden seçildiğinde mevcut yarım antrenmanın setleri sıfırlanmamalıdır.
+    final bool isSameOngoingDay = bloc.state.status != ActiveWorkoutStatus.finished &&
+        currentDay != null &&
+        (currentDay.id == widget.workoutDay.id ||
+            (currentDay.id < 0 &&
+                currentDay.dayOrder == widget.workoutDay.dayOrder &&
+                (bloc.state.trainingBlockId == null ||
+                    bloc.state.trainingBlockId == 0 ||
+                    bloc.state.trainingBlockId == widget.trainingBlockId)));
+
+    if (!isSameOngoingDay) {
       bloc.add(
         StartWorkout(
           widget.workoutDay,

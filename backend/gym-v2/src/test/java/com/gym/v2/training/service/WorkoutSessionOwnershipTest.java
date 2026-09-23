@@ -12,7 +12,11 @@ import com.gym.v2.training.dto.WorkoutLogRequestDTO;
 import com.gym.v2.training.dto.WorkoutSessionRequestDTO;
 import com.gym.v2.training.entity.WorkoutExercise;
 import com.gym.v2.training.entity.WorkoutSession;
+import com.gym.v2.training.entity.TrainingBlock;
+import com.gym.v2.training.entity.WorkoutDay;
 import com.gym.v2.training.repository.ExerciseRepository;
+import com.gym.v2.training.repository.TrainingBlockRepository;
+import com.gym.v2.training.repository.WorkoutDayRepository;
 import com.gym.v2.training.repository.WorkoutExerciseRepository;
 import com.gym.v2.training.repository.WorkoutLogRepository;
 import com.gym.v2.training.repository.WorkoutSessionRepository;
@@ -75,6 +79,12 @@ class WorkoutSessionOwnershipTest {
 	private WeeklyProgressService weeklyProgressService;
 
 	@Mock
+	private TrainingBlockRepository trainingBlockRepository;
+
+	@Mock
+	private WorkoutDayRepository workoutDayRepository;
+
+	@Mock
 	private TrainingMapper trainingMapper;
 
 	private WorkoutSessionService service;
@@ -95,8 +105,8 @@ class WorkoutSessionOwnershipTest {
 	void setUp() {
 		Clock fixedClock = Clock.fixed(Instant.parse("2026-01-01T00:00:00Z"), ZoneOffset.UTC);
 		service = new WorkoutSessionService(workoutSessionRepository, logRepository, workoutExerciseRepository,
-				exerciseRepository, userRepository, clientRepository, weeklyProgressService, trainingMapper,
-				fixedClock);
+				exerciseRepository, userRepository, clientRepository, weeklyProgressService, trainingBlockRepository,
+				workoutDayRepository, trainingMapper, fixedClock);
 
 		owner = userWithId(1L, "sporcu@test.com", UserRole.CLIENT);
 		otherClient = userWithId(99L, "baska.sporcu@test.com", UserRole.CLIENT);
@@ -214,6 +224,7 @@ class WorkoutSessionOwnershipTest {
 	@Test
 	void logWorkoutSession_withTrainingBlock_updatesWeeklyProgressForTheCurrentUser() {
 		currentUserIs(owner);
+		when(trainingBlockRepository.findByIdAndClientId(5L, 1L)).thenReturn(Optional.of(new TrainingBlock()));
 		when(workoutSessionRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
 		WorkoutSessionRequestDTO request = new WorkoutSessionRequestDTO("Gun 1", 3600, List.of(), 5L, null, null);
@@ -304,6 +315,73 @@ class WorkoutSessionOwnershipTest {
 
 		verify(workoutSessionRepository, never()).findByUserIdAndLocalIdWithLogs(any(), any());
 		verify(workoutSessionRepository).save(any());
+	}
+
+	// ---------------------------------------------------------------------------
+	// K1-07: Sahiplik kontrolü — trainingBlockId ve workoutDayId IDOR koruması
+	// ---------------------------------------------------------------------------
+
+	@Test
+	void logWorkoutSession_trainingBlockBelongsToAnotherClient_isRejectedAndSavesNothing() {
+		currentUserIs(otherClient);
+		// Program 500 sporcu 1'e ait; sporcu 99 için sahiplik sorgusu boş döner.
+		when(trainingBlockRepository.findByIdAndClientId(500L, 99L)).thenReturn(Optional.empty());
+
+		WorkoutSessionRequestDTO request = new WorkoutSessionRequestDTO("Gun 1", 3600, List.of(), 500L, null, null);
+
+		assertThatThrownBy(() -> service.logWorkoutSession(request)).isInstanceOf(NotFoundException.class)
+			.hasMessageContaining("Antrenman programı bulunamadı veya yetkiniz yok");
+
+		verify(workoutSessionRepository, never()).save(any());
+		verify(weeklyProgressService, never()).upsertWeeklyProgress(any(), any(), any());
+	}
+
+	@Test
+	void logWorkoutSession_workoutDayBelongsToAnotherClient_isRejectedAndSavesNothing() {
+		currentUserIs(otherClient);
+		// Gün 50 başka bir sporcuya ait.
+		when(workoutDayRepository.findByIdAndBlockIdAndClientId(50L, 500L, 99L)).thenReturn(Optional.empty());
+
+		WorkoutSessionRequestDTO request = new WorkoutSessionRequestDTO("Gun 1", 3600, List.of(), 500L, 50L, null);
+
+		assertThatThrownBy(() -> service.logWorkoutSession(request)).isInstanceOf(NotFoundException.class)
+			.hasMessageContaining("Antrenman günü bulunamadı veya yetkiniz yok");
+
+		verify(workoutSessionRepository, never()).save(any());
+		verify(weeklyProgressService, never()).upsertWeeklyProgress(any(), any(), any());
+	}
+
+	@Test
+	void logWorkoutSession_workoutDayBelongsToDifferentProgram_isRejectedAndSavesNothing() {
+		currentUserIs(owner);
+		// Gün 50 sporcuya ait fakat program 500 yerine başka bir programa bağlı.
+		when(workoutDayRepository.findByIdAndBlockIdAndClientId(50L, 500L, 1L)).thenReturn(Optional.empty());
+
+		WorkoutSessionRequestDTO request = new WorkoutSessionRequestDTO("Gun 1", 3600, List.of(), 500L, 50L, null);
+
+		assertThatThrownBy(() -> service.logWorkoutSession(request)).isInstanceOf(NotFoundException.class)
+			.hasMessageContaining("Antrenman günü bulunamadı veya yetkiniz yok");
+
+		verify(workoutSessionRepository, never()).save(any());
+	}
+
+	@Test
+	void logWorkoutSession_validProgramAndDayOwnedByClient_savesSuccessfully() {
+		currentUserIs(owner);
+		WorkoutDay day = new WorkoutDay();
+		ReflectionTestUtils.setField(day, "id", 50L);
+		when(workoutDayRepository.findByIdAndBlockIdAndClientId(50L, 500L, 1L)).thenReturn(Optional.of(day));
+		when(workoutSessionRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+		WorkoutSessionRequestDTO request = new WorkoutSessionRequestDTO("Gun 1", 3600, List.of(), 500L, 50L, null);
+
+		service.logWorkoutSession(request);
+
+		ArgumentCaptor<WorkoutSession> captor = ArgumentCaptor.forClass(WorkoutSession.class);
+		verify(workoutSessionRepository).save(captor.capture());
+		assertThat(captor.getValue().getTrainingBlockId()).isEqualTo(500L);
+		assertThat(captor.getValue().getWorkoutDayId()).isEqualTo(50L);
+		verify(weeklyProgressService).upsertWeeklyProgress(eq(1L), eq(500L), any());
 	}
 
 }

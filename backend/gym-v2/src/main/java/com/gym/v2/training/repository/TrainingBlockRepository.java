@@ -48,4 +48,9 @@ public interface TrainingBlockRepository extends JpaRepository<TrainingBlock, Lo
 	/** Tekrar koruması (G-74): arama programın sahibi sporcuyla sınırlı. */
 	Optional<TrainingBlock> findByClientIdAndLocalId(Long clientId, String localId);
 
+	/**
+	 * Sahiplik doğrulaması (K1-07): programın aktif sporcuya ait olduğunu garanti eder.
+	 */
+	Optional<TrainingBlock> findByIdAndClientId(Long id, Long clientId);
+
 }
