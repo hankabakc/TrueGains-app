@@ -52,6 +52,13 @@ public class WorkoutExercise {
 	@Column(name = "is_to_failure")
 	private Boolean isToFailure; // Tükeniş seti mi? (True ise set tükenişe kadar yapılır)
 
+	/**
+	 * Cihazın verdiği geçici kimlik (G-74): internetsiz yapılan antrenmanın setleri
+	 * sunucuya henüz gitmemiş egzersize bununla bağlanır.
+	 */
+	@Column(name = "local_id", length = 36)
+	private String localId;
+
 	// Sporcunun bu egzersiz için yaptığı tüm set kayıtları (Loglar)
 	@OneToMany(mappedBy = "workoutExercise", cascade = CascadeType.ALL, orphanRemoval = true)
 	private List<WorkoutLog> logs;
@@ -78,6 +85,14 @@ public class WorkoutExercise {
 	// Getter ve Setter'lar
 	public Long getId() {
 		return id;
+	}
+
+	public String getLocalId() {
+		return localId;
+	}
+
+	public void setLocalId(String localId) {
+		this.localId = localId;
 	}
 
 	public void setId(Long id) {

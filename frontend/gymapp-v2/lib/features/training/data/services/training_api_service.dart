@@ -14,6 +14,9 @@ class TrainingApiService {
   /// Kişisel program ucu; çevrimdışı kuyruk da aynı sabiti kullanır (G-74).
   static const String personalProgramsPath = '/training/programs/personal';
 
+  /// Program etkinleştirme ucu; sunucuya gitmemiş program `$activatePath/local/<yerel kimlik>` ile (G-74).
+  static const String activatePath = '/training/activate';
+
   final DioClient _dioClient;
 
   TrainingApiService(this._dioClient);
@@ -273,7 +276,7 @@ class TrainingApiService {
   Future<ApiResponse<void>> activateProgram(int id) async {
     try {
       final response = await _dioClient.dio.post<Map<String, dynamic>>(
-        '/training/activate/$id',
+        '$activatePath/$id',
       );
       return ApiResponse<void>.fromJson(response.data!, (json) {});
     } on DioException catch (e) {

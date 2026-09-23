@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:gymapp_v2/features/training/models/training_models.dart';
 import 'package:gymapp_v2/features/training/repository/training_repository.dart';
@@ -5,6 +7,7 @@ import 'create_personal_program_state.dart';
 
 class CreatePersonalProgramCubit extends Cubit<CreatePersonalProgramState> {
   final TrainingRepository _repository;
+  final Random _random = Random.secure();
 
   CreatePersonalProgramCubit({required TrainingRepository repository})
       : _repository = repository,
@@ -30,6 +33,7 @@ class CreatePersonalProgramCubit extends Cubit<CreatePersonalProgramState> {
         durationWeeks: initialBlock.durationWeeks,
         editingLocalId: initialBlock.localId,
         editingVersion: initialBlock.version,
+        editingStartDate: initialBlock.startDate,
         status: CreatePersonalProgramStatus.initial,
       ));
     } else {
@@ -449,6 +453,13 @@ class CreatePersonalProgramCubit extends Cubit<CreatePersonalProgramState> {
     ));
   }
 
+  /// Sunucuya gitmemiş gün/egzersiz (kimlik 0) kişisel programda negatif geçici kimlik alır (G-74). Antrenman akışı
+  /// kimliği int tutuyor: hepsi 0 olsaydı internetsiz antrenmanın setleri karışırdı. Sunucu negatif kimliği yeni satır
+  /// sayar ve egzersizde saklar; internetsiz antrenman egzersize onunla bağlanır. Düzenleyicideki her kurulum `id`'yi
+  /// koruduğu için geçici kimlik sonraki düzenlemelerde kaybolmaz. Şablonlar internet ister (KR13), dokunulmaz.
+  // ponytail: 31 bitlik rastgele sayı; bir sporcunun egzersizleri arasında çakışma olasılığı ~n²/2^32.
+  int _localIdIfNew(int id) => id != 0 || state.isTemplate ? id : -(_random.nextInt(1 << 31) + 1);
+
   Future<void> saveProgram(String name) async {
     emit(state.copyWith(status: CreatePersonalProgramStatus.loading));
     try {
@@ -458,15 +469,24 @@ class CreatePersonalProgramCubit extends Cubit<CreatePersonalProgramState> {
       for (int i = 0; i < state.draftDays.length; i++) {
         if (state.isOffDays[i]) {
           finalDays.add(WorkoutDay(
-            id: state.draftDays[i].id,
+            id: _localIdIfNew(state.draftDays[i].id),
             name: state.draftDays[i].name,
             dayOrder: state.draftDays[i].dayOrder,
             exercises: [],
           ));
         } else {
-          finalDays.add(state.draftDays[i]);
+          final WorkoutDay day = state.draftDays[i];
+          finalDays.add(WorkoutDay(
+            id: _localIdIfNew(day.id),
+            name: day.name,
+            dayOrder: day.dayOrder,
+            isMagnetEnabled: day.isMagnetEnabled,
+            exercises: day.exercises.map((WorkoutExercise e) => e.withId(_localIdIfNew(e.id))).toList(),
+          ));
         }
       }
+      // Düzenleme programın başlangıcını korur (G-74); yeni program bugün başlar.
+      final DateTime startDate = state.editingStartDate ?? DateTime.now();
 
       final program = TrainingBlock(
         id: effectiveId,
@@ -475,8 +495,8 @@ class CreatePersonalProgramCubit extends Cubit<CreatePersonalProgramState> {
         coachName: state.isTemplate ? 'Antrenör Şablonu' : 'Kişisel Program',
         clientId: 0,
         clientName: '',
-        startDate: DateTime.now(),
-        endDate: DateTime.now().add(Duration(days: 7 * state.durationWeeks)),
+        startDate: startDate,
+        endDate: startDate.add(Duration(days: 7 * state.durationWeeks)),
         isActive: false,
         isPersonal: !state.isTemplate,
         isTemplate: state.isTemplate,

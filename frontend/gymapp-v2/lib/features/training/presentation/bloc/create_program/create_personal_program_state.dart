@@ -25,6 +25,9 @@ class CreatePersonalProgramState extends Equatable {
   /// Düzenlemeye başlanan sürüm (G-74, KR13): sunucuda o arada değiştiyse güncelleme reddedilir.
   final int? editingVersion;
 
+  /// Düzenlenen programın başlangıcı (G-74): düzenleme onu korur, ilerleme haftası sıfırlanmaz.
+  final DateTime? editingStartDate;
+
   const CreatePersonalProgramState({
     this.status = CreatePersonalProgramStatus.initial,
     this.draftDays = const [],
@@ -39,6 +42,7 @@ class CreatePersonalProgramState extends Equatable {
     this.durationWeeks = 4,
     this.editingLocalId,
     this.editingVersion,
+    this.editingStartDate,
     this.error,
   });
 
@@ -56,6 +60,7 @@ class CreatePersonalProgramState extends Equatable {
     int? durationWeeks,
     String? editingLocalId,
     int? editingVersion,
+    DateTime? editingStartDate,
     String? error,
   }) {
     return CreatePersonalProgramState(
@@ -72,6 +77,7 @@ class CreatePersonalProgramState extends Equatable {
       durationWeeks: durationWeeks ?? this.durationWeeks,
       editingLocalId: editingLocalId ?? this.editingLocalId,
       editingVersion: editingVersion ?? this.editingVersion,
+      editingStartDate: editingStartDate ?? this.editingStartDate,
       error: error ?? this.error,
     );
   }
@@ -91,6 +97,7 @@ class CreatePersonalProgramState extends Equatable {
         durationWeeks,
         editingLocalId,
         editingVersion,
+        editingStartDate,
         error,
       ];
 }

@@ -300,7 +300,7 @@ class TrainingBloc extends Bloc<TrainingEvent, TrainingState> {
   ) async {
     emit(state.copyWith(isProcessing: true, clearError: true));
     try {
-      final result = await _repository.activateProgram(event.id);
+      final result = await _repository.activateProgram(event.id, localId: event.localId);
       if (result.success) {
         emit(state.copyWith(
           isProcessing: false,

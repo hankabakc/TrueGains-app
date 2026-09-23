@@ -95,8 +95,10 @@ public class WorkoutSessionService {
 			}
 		}
 		WorkoutSession session = new WorkoutSession(currentUser, request.workoutDayName(), request.totalSeconds());
-		session.setTrainingBlockId(request.trainingBlockId());
-		session.setWorkoutDayId(request.workoutDayId());
+		// Sunucu kimliği olmayan (0 ya da negatif) program/gün yazılmaz; aşağıda
+		// egzersizden alınır (G-74).
+		session.setTrainingBlockId(positiveOrNull(request.trainingBlockId()));
+		session.setWorkoutDayId(positiveOrNull(request.workoutDayId()));
 		session.setLocalId(request.localId());
 		session.onPersist(clock.instant());
 
@@ -111,6 +113,18 @@ public class WorkoutSessionService {
 
 			Map<Long, WorkoutExercise> exerciseMap = exercises.stream()
 				.collect(Collectors.toMap(WorkoutExercise::getId, e -> e));
+
+			// G-74: internetsiz oluşturulan programın egzersizi cihazın verdiği negatif
+			// geçici kimlikle gelir; sunucu onu local_id'de saklıyor. Tek sorgu, sahibi
+			// sporcuyla sınırlı.
+			Set<String> localIds = exerciseIds.stream()
+				.filter(id -> id != null && id < 0)
+				.map(String::valueOf)
+				.collect(Collectors.toSet());
+			if (!localIds.isEmpty()) {
+				workoutExerciseRepository.findAllByLocalIdsOfClient(localIds, currentUser.getId())
+					.forEach(we -> exerciseMap.putIfAbsent(Long.valueOf(we.getLocalId()), we));
+			}
 
 			// Alternatif (substitute) egzersizler de tek sorguda çekilir. Daha önce set
 			// başına findById çağrılıyordu: 30 setlik bir idmanda 30 fazladan sorgu.
@@ -128,6 +142,15 @@ public class WorkoutSessionService {
 				WorkoutExercise exercise = exerciseMap.get(logReq.workoutExerciseId());
 				if (exercise == null) {
 					throw new NotFoundException("Egzersiz bulunamadı veya yetkiniz yok: " + logReq.workoutExerciseId());
+				}
+				// Sunucuya henüz gitmemiş programla yapılan antrenmanda (G-74) program ve
+				// gün cihazda kimliksizdir: egzersizin bağlı olduğu gün ve programa
+				// yazılır, haftalık ilerleme de böylece güncellenir.
+				if (session.getTrainingBlockId() == null && logReq.workoutExerciseId() < 0) {
+					session.setTrainingBlockId(exercise.getWorkoutDay().getTrainingBlock().getId());
+					if (session.getWorkoutDayId() == null) {
+						session.setWorkoutDayId(exercise.getWorkoutDay().getId());
+					}
 				}
 				WorkoutLog workoutLog = new WorkoutLog(exercise, logReq.setIndex(), logReq.actualWeight(),
 						logReq.actualReps(), logReq.rpe(), logReq.durationSeconds());
@@ -188,6 +211,10 @@ public class WorkoutSessionService {
 			throw new BadRequestException("Bu kayıt size ait değil.");
 		}
 		workoutSessionRepository.delete(session);
+	}
+
+	private static Long positiveOrNull(Long id) {
+		return id != null && id > 0 ? id : null;
 	}
 
 	private AppUser getCurrentUser() {

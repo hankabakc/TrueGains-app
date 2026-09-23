@@ -162,10 +162,12 @@ public class TrainingBlockService {
 
 		block.setName(request.name());
 		block.setDescription(request.description());
-		block.setStartDate(request.startDate());
+		// Düzenleme programın başlangıç tarihini değiştirmez (G-74): ilerleme haftası
+		// başlangıçtan sayılıyor; düzenleyici tarihi bugüne çektiği için programı
+		// kullanan sporcunun ilerlemesi her düzenlemede sıfırlanıyordu. Süre değişirse
+		// bitiş başlangıçtan yeniden hesaplanır.
 		block.setDurationWeeks(request.durationWeeks() != null ? request.durationWeeks() : block.getDurationWeeks());
-		block.setEndDate(request.startDate() != null ? request.startDate().plusWeeks(block.getDurationWeeks())
-				: block.getEndDate());
+		block.setEndDate(block.getStartDate().plusWeeks(block.getDurationWeeks()));
 		// `version` alanına elle yazılmaz: bu bir @Version (iyimser kilit) alanıdır ve
 		// sürümü Hibernate artırır. Elle yazmak ya sürümü çift artırır ya da
 		// UPDATE ... WHERE version = ? hiçbir satır bulamadığı için her güncellemeyi
@@ -399,7 +401,23 @@ public class TrainingBlockService {
 		if (block.getClient() == null || !block.getClient().getId().equals(currentUser.getId())) {
 			throw new BadRequestException("Bu programı aktif etme yetkiniz yok.");
 		}
+		activate(block, currentUser);
+	}
 
+	/**
+	 * İnternetsiz oluşturulup etkinleştirilen program (G-74): sunucu kimliği cihazda
+	 * yoktur, kuyrukta oluşturmasının ardından yerel kimlikle gelir. Arama sahibi
+	 * sporcuyla sınırlı.
+	 */
+	@Transactional
+	public void activateProgramByLocalId(String localId) {
+		AppUser currentUser = getCurrentUser();
+		TrainingBlock block = blockRepository.findByClientIdAndLocalId(currentUser.getId(), localId)
+			.orElseThrow(() -> new NotFoundException("Program bulunamadı."));
+		activate(block, currentUser);
+	}
+
+	private void activate(TrainingBlock block, AppUser currentUser) {
 		// Tek tek saveAndFlush yerine toplu kayıt: sporcunun her programı için ayrı bir
 		// UPDATE turu atılıyordu, maliyet program sayısıyla büyüyordu.
 		List<TrainingBlock> others = blockRepository.findByClientId(currentUser.getId())
@@ -604,10 +622,16 @@ public class TrainingBlockService {
 				we.setIsToFailure(exDto.isToFailure() != null && exDto.isToFailure());
 			}
 			else {
-				day.addExercise(
-						new WorkoutExercise(day, exercise, exDto.targetSets(), exDto.targetReps(), exDto.targetWeight(),
-								exDto.restTimeSeconds() != null ? exDto.restTimeSeconds() : 60, exDto.supersetGroupId(),
-								exDto.orderIndex(), exDto.isToFailure() != null && exDto.isToFailure()));
+				WorkoutExercise created = new WorkoutExercise(day, exercise, exDto.targetSets(), exDto.targetReps(),
+						exDto.targetWeight(), exDto.restTimeSeconds() != null ? exDto.restTimeSeconds() : 60,
+						exDto.supersetGroupId(), exDto.orderIndex(),
+						exDto.isToFailure() != null && exDto.isToFailure());
+				// G-74: negatif kimlik cihazın verdiği geçici kimliktir; internetsiz
+				// yapılan antrenmanın setleri bu egzersize onunla bağlanır.
+				if (exDto.id() != null && exDto.id() < 0) {
+					created.setLocalId(String.valueOf(exDto.id()));
+				}
+				day.addExercise(created);
 			}
 		}
 	}

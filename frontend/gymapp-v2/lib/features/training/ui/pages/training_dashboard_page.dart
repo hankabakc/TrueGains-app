@@ -593,12 +593,11 @@ class _TrainingDashboardPageState extends State<TrainingDashboardPage>
                     ],
                   ),
                 ),
-              // Sunucuya henüz gitmemiş (id 0) program etkinleştirilemez: etkinleştirme sunucu kimliğiyle yapılır (G-74).
-              ] else if (!program.isActive && program.id != 0) ...[
+              ] else if (!program.isActive) ...[
                 const SizedBox(height: AppSpacing.md),
                 ElevatedButton(
                   onPressed: () {
-                    context.read<TrainingBloc>().add(ActivateProgram(program.id));
+                    context.read<TrainingBloc>().add(ActivateProgram(program.id, localId: program.localId));
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.primary.withValues(alpha: 0.15),

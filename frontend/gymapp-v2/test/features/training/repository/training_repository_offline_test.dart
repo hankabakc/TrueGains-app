@@ -40,6 +40,7 @@ void main() {
     when(() => syncManager.pendingRecords()).thenReturn(<PendingRecord>[]);
     when(() => syncManager.replacePayload(any(), any())).thenAnswer((_) async => true);
     when(() => syncManager.removePending(any())).thenAnswer((_) async => true);
+    when(() => syncManager.syncPendingData()).thenAnswer((_) async {});
   });
 
   test('bağlantı yokken antrenman gerçek oturum ucuna kuyruklanır', () async {
@@ -341,5 +342,131 @@ void main() {
     when(() => networkInfo.isConnected).thenAnswer((_) async => true);
     final ApiResponse<List<TrainingBlock>> online = await repository.getMyActivePrograms();
     expect(online.success, isFalse);
+  });
+
+  // --- G-74 (b): internetsiz oluşturulan programı etkinleştirme ve onunla antrenman ---
+
+  CompletedSetData setOf(int workoutExerciseId) => CompletedSetData(
+        workoutExerciseId: workoutExerciseId,
+        exerciseName: 'Squat',
+        setIndex: 1,
+        weight: 80,
+        reps: 10,
+        durationSeconds: 30,
+        completedAt: DateTime(2026, 9, 23),
+      );
+
+  test('kuyruktaki programla antrenman bağlantı varken de kuyruğa girer, kimliksiz program/gün gönderilmez', () async {
+    when(() => networkInfo.isConnected).thenAnswer((_) async => true);
+
+    await repository.logWorkoutSession(
+      dayName: 'Pazartesi',
+      totalSeconds: 600,
+      sets: <CompletedSetData>[setOf(-501)],
+      trainingBlockId: 0,
+      workoutDayId: -11,
+    );
+
+    final Map<String, dynamic> payload =
+        verify(() => syncManager.addToQueue(TrainingApiService.sessionsPath, captureAny())).captured.single
+            as Map<String, dynamic>;
+    expect(payload['trainingBlockId'], isNull);
+    expect(payload['workoutDayId'], isNull);
+    expect(((payload['logs'] as List<dynamic>).single as Map<String, dynamic>)['workoutExerciseId'], equals(-501));
+    verify(() => syncManager.syncPendingData()).called(1);
+    verifyNever(() => api.logWorkoutSession(any()));
+  });
+
+  test('sunucudaki programla antrenman program ve gün kimliğiyle doğrudan gider', () async {
+    when(() => networkInfo.isConnected).thenAnswer((_) async => true);
+    when(() => api.logWorkoutSession(any()))
+        .thenAnswer((_) async => ApiResponse<void>(success: true, message: '', timestamp: ''));
+
+    await repository.logWorkoutSession(
+      dayName: 'Pazartesi',
+      totalSeconds: 600,
+      sets: <CompletedSetData>[setOf(1000)],
+      trainingBlockId: 7,
+      workoutDayId: 70,
+    );
+
+    final Map<String, dynamic> payload =
+        verify(() => api.logWorkoutSession(captureAny())).captured.single as Map<String, dynamic>;
+    expect(payload['trainingBlockId'], equals(7));
+    expect(payload['workoutDayId'], equals(70));
+    verifyNever(() => syncManager.addToQueue(any(), any()));
+  });
+
+  test('sunucuya gitmemiş program yerel kimliğiyle etkinleşir, kuyruğa girer ve bağlantı varsa hemen gönderilir', () async {
+    when(() => networkInfo.isConnected).thenAnswer((_) async => true);
+
+    final ApiResponse<void> res = await repository.activateProgram(0, localId: 'L1');
+
+    verify(() => syncManager.addToQueue('${TrainingApiService.activatePath}/local/L1', <String, dynamic>{})).called(1);
+    verify(() => syncManager.syncPendingData()).called(1);
+    verifyNever(() => api.activateProgram(any()));
+    expect(res.success, isTrue);
+  });
+
+  test('bağlantı yokken sunucudaki programın etkinleştirmesi kuyruğa girer; varken doğrudan gider', () async {
+    when(() => networkInfo.isConnected).thenAnswer((_) async => false);
+    await repository.activateProgram(7);
+    verify(() => syncManager.addToQueue('${TrainingApiService.activatePath}/7', <String, dynamic>{})).called(1);
+    verifyNever(() => api.activateProgram(any()));
+
+    when(() => networkInfo.isConnected).thenAnswer((_) async => true);
+    when(() => api.activateProgram(any())).thenAnswer((_) async => ok<void>(null));
+    await repository.activateProgram(7);
+    verify(() => api.activateProgram(7)).called(1);
+  });
+
+  test('listede kuyruktaki son etkinleştirme tek aktif programı belirler', () async {
+    when(() => networkInfo.isConnected).thenAnswer((_) async => false);
+    when(() => api.getMyActivePrograms()).thenAnswer(
+      (_) async => ok<List<TrainingBlock>>(<TrainingBlock>[
+        program(id: 7, name: 'Eski aktif', isActive: true),
+        program(id: 8, name: 'Diğer'),
+      ]),
+    );
+    when(() => syncManager.pendingRecords()).thenReturn(<PendingRecord>[
+      queued('k1', programs, SyncManager.methodPost, <String, dynamic>{...program(name: 'Yerel').toJson(), 'local_id': 'L1'}),
+      queued('a8', '${TrainingApiService.activatePath}/8', SyncManager.methodPost, <String, dynamic>{}),
+      queued('a1', '${TrainingApiService.activatePath}/local/L1', SyncManager.methodPost, <String, dynamic>{}),
+    ]);
+
+    final List<TrainingBlock> list = (await repository.getMyActivePrograms()).data!;
+
+    expect(
+      list.map((TrainingBlock p) => '${p.name}:${p.isActive}').toList(),
+      equals(<String>['Eski aktif:false', 'Diğer:false', 'Yerel:true']),
+    );
+  });
+
+  test('sunucuya gitmemiş program silinince kuyruktaki etkinleştirmesi de çıkar', () async {
+    when(() => networkInfo.isConnected).thenAnswer((_) async => false);
+    when(() => syncManager.pendingRecords()).thenReturn(<PendingRecord>[
+      queued('k1', programs, SyncManager.methodPost, <String, dynamic>{'local_id': 'L1'}),
+      queued('a1', '${TrainingApiService.activatePath}/local/L1', SyncManager.methodPost, <String, dynamic>{}),
+      queued('a2', '${TrainingApiService.activatePath}/local/L2', SyncManager.methodPost, <String, dynamic>{}),
+    ]);
+
+    await repository.deletePersonalProgram(0, localId: 'L1');
+
+    verify(() => syncManager.removePending('k1')).called(1);
+    verify(() => syncManager.removePending('a1')).called(1);
+    verifyNever(() => syncManager.removePending('a2'));
+  });
+
+  test('sunucudaki program silinince kuyruktaki etkinleştirmesi de çıkar', () async {
+    when(() => networkInfo.isConnected).thenAnswer((_) async => false);
+    when(() => syncManager.pendingRecords()).thenReturn(<PendingRecord>[
+      queued('a7', '${TrainingApiService.activatePath}/7', SyncManager.methodPost, <String, dynamic>{}),
+      queued('a8', '${TrainingApiService.activatePath}/8', SyncManager.methodPost, <String, dynamic>{}),
+    ]);
+
+    await repository.deletePersonalProgram(7);
+
+    verify(() => syncManager.removePending('a7')).called(1);
+    verifyNever(() => syncManager.removePending('a8'));
   });
 }

@@ -70,12 +70,17 @@ void main() {
     await tester.pump();
   }
 
-  testWidgets('sunucuya gitmemiş program BEKLİYOR işaretlidir ve etkinleştirilemez', (WidgetTester tester) async {
+  testWidgets('sunucuya gitmemiş program BEKLİYOR işaretlidir ve cihaz kimliğiyle etkinleştirilir', (WidgetTester tester) async {
     await pumpPage(tester);
 
     expect(find.text('BEKLİYOR'), findsOneWidget);
-    // Yalnızca sunucudaki programda: bekleyen programın sunucu kimliği yok.
-    expect(find.text('AKTİF ET'), findsOneWidget);
+    // İki program da etkinleştirilebilir (KR13: kişisel programla antrenman internetsiz).
+    expect(find.text('AKTİF ET'), findsNWidgets(2));
+
+    await tester.tap(find.text('AKTİF ET').first);
+    await tester.pump();
+
+    verify(() => trainingBloc.add(const ActivateProgram(0, localId: 'L1'))).called(1);
   });
 
   testWidgets('bekleyen programın silinmesi cihaz kimliğiyle istenir', (WidgetTester tester) async {

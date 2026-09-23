@@ -89,10 +89,14 @@ class LoadCoachAssignedPrograms extends TrainingEvent {
 
 class ActivateProgram extends TrainingEvent {
   final int id;
-  const ActivateProgram(this.id);
+
+  /// Henüz sunucuya gitmemiş (id 0) programın cihaz kimliği (G-74).
+  final String? localId;
+
+  const ActivateProgram(this.id, {this.localId});
 
   @override
-  List<Object?> get props => [id];
+  List<Object?> get props => [id, localId];
 }
 
 class ClearTrainingMessages extends TrainingEvent {

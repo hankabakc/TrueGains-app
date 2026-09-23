@@ -83,6 +83,28 @@ class TrainingBlock extends Equatable {
     }
   }
 
+  /// Aynı program, aktifliği değişmiş (G-74: kuyruktaki etkinleştirme listede hemen görünür).
+  TrainingBlock withActive(bool value) => TrainingBlock(
+        id: id,
+        name: name,
+        description: description,
+        coachId: coachId,
+        coachName: coachName,
+        clientId: clientId,
+        clientName: clientName,
+        startDate: startDate,
+        endDate: endDate,
+        isActive: value,
+        isPersonal: isPersonal,
+        isTemplate: isTemplate,
+        isOrphaned: isOrphaned,
+        workoutDays: workoutDays,
+        version: version,
+        durationWeeks: durationWeeks,
+        localId: localId,
+        isQueued: isQueued,
+      );
+
   Map<String, dynamic> toJson() {
     return {
       'id': id,
@@ -252,6 +274,23 @@ class WorkoutExercise extends Equatable {
       rethrow;
     }
   }
+
+  /// Aynı egzersiz, başka kimlikle (G-74: sunucuya gitmemiş egzersizin cihazdaki geçici kimliği).
+  WorkoutExercise withId(int newId) => WorkoutExercise(
+        id: newId,
+        exerciseId: exerciseId,
+        exerciseName: exerciseName,
+        muscleGroup: muscleGroup,
+        targetSets: targetSets,
+        targetReps: targetReps,
+        targetWeight: targetWeight,
+        restTimeSeconds: restTimeSeconds,
+        supersetGroupId: supersetGroupId,
+        orderIndex: orderIndex,
+        coachNotes: coachNotes,
+        isToFailure: isToFailure,
+        logs: logs,
+      );
 
   Map<String, dynamic> toJson() {
     return {

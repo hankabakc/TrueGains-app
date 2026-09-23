@@ -158,6 +158,13 @@ public class TrainingController {
 		return ApiResponse.success(null, "Program başarıyla aktif edildi.", clock.instant());
 	}
 
+	@PostMapping("/activate/local/{localId}")
+	@PreAuthorize("hasRole('CLIENT')")
+	public ApiResponse<Void> activateProgramByLocalId(@PathVariable String localId) {
+		blockService.activateProgramByLocalId(localId);
+		return ApiResponse.success(null, "Program başarıyla aktif edildi.", clock.instant());
+	}
+
 	@GetMapping("/progress/me")
 	@PreAuthorize("hasRole('CLIENT')")
 	public ApiResponse<WeeklyProgressDTO> getMyWeeklyProgress() {

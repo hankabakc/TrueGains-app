@@ -736,6 +736,20 @@ void main() {
       },
     );
 
+    blocTest<TrainingBloc, TrainingState>(
+      'bekleyen programın etkinleştirilmesi cihaz kimliğini depoya iletir',
+      build: () {
+        when(() => repository.activateProgram(0, localId: 'L1')).thenAnswer((_) async => ok<void>(null));
+        when(() => repository.getMyActivePrograms()).thenAnswer((_) async => ok(<TrainingBlock>[]));
+        return TrainingBloc(repository);
+      },
+      act: (bloc) => bloc.add(const ActivateProgram(0, localId: 'L1')),
+      wait: const Duration(milliseconds: 50),
+      verify: (_) {
+        verify(() => repository.activateProgram(0, localId: 'L1')).called(1);
+      },
+    );
+
     test('kuyruk gönderim yapınca gösterilen program listesi tazelenir', () async {
       final _CountingNotifier synced = _CountingNotifier();
       when(() => repository.getMyActivePrograms()).thenAnswer((_) async => ok(<TrainingBlock>[sampleProgram]));

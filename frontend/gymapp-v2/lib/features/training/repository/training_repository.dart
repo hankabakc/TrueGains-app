@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:gymapp_v2/core/network/api_response.dart';
 import 'package:gymapp_v2/core/network/network_info.dart';
 import 'package:gymapp_v2/core/network/sync_manager.dart';
@@ -52,6 +54,15 @@ class TrainingRepository {
     for (final PendingRecord r in queued) {
       if (r.endpoint == TrainingApiService.personalProgramsPath) {
         programs.add(TrainingBlock.fromJson(r.payload, isQueued: true));
+        continue;
+      }
+      if (r.endpoint.startsWith('${TrainingApiService.activatePath}/')) {
+        // Etkinleştirme: kuyruk sırasıyla uygulanır, son etkinleştirilen tek aktif program olur.
+        final int target = programs.indexWhere((TrainingBlock p) => _activationPathOf(p) == r.endpoint);
+        if (target < 0) continue;
+        for (int i = 0; i < programs.length; i++) {
+          programs[i] = programs[i].withActive(i == target);
+        }
         continue;
       }
       final int? id = int.tryParse(r.endpoint.substring(TrainingApiService.personalProgramsPath.length + 1));
@@ -111,14 +122,23 @@ class TrainingRepository {
     );
   }
 
-  /// Oturumdaki kullanıcının kuyruktaki (gönderilmemiş, reddedilmemiş) kişisel program kayıtları, eklenme sırasıyla.
+  /// Oturumdaki kullanıcının kuyruktaki (gönderilmemiş, reddedilmemiş) kişisel program ve etkinleştirme kayıtları,
+  /// eklenme sırasıyla.
   List<PendingRecord> _queuedProgramRecords() {
     const String path = TrainingApiService.personalProgramsPath;
     return _syncManager
         .pendingRecords()
-        .where((PendingRecord r) => r.endpoint == path || r.endpoint.startsWith('$path/'))
+        .where((PendingRecord r) =>
+            r.endpoint == path ||
+            r.endpoint.startsWith('$path/') ||
+            r.endpoint.startsWith('${TrainingApiService.activatePath}/'))
         .toList();
   }
+
+  /// Programın etkinleştirme ucu: sunucuya gitmemiş program (id 0) yerel kimlikle (G-74).
+  static String _activationPathOf(TrainingBlock program) => program.id == 0
+      ? '${TrainingApiService.activatePath}/local/${program.localId}'
+      : '${TrainingApiService.activatePath}/${program.id}';
 
   /// Henüz sunucuya gitmemiş programın kuyruktaki oluşturma kaydı.
   PendingRecord? _queuedCreateOf(String localId) => _queuedProgramRecords()
@@ -174,13 +194,16 @@ class TrainingRepository {
     int? trainingBlockId,
     int? workoutDayId,
   }) async {
+    // G-74: sunucuya gitmemiş programın gün/egzersizi cihazda geçici (negatif) kimlik taşır. Program ve gün kimliği
+    // gönderilmez, sunucu egzersizden bulur; egzersiz geçici kimliğiyle gider (sunucu onu saklıyor).
+    final bool usesQueuedProgram = sets.any((CompletedSetData s) => s.workoutExerciseId < 0);
     final payload = {
       // Tekrar koruması (G-79): aynı kimlikle ikinci gönderim sunucuda yeni kayıt açmaz.
       'localId': const Uuid().v4(),
       'workoutDayName': dayName,
       'totalSeconds': totalSeconds,
-      'trainingBlockId': trainingBlockId,
-      'workoutDayId': workoutDayId,
+      'trainingBlockId': (trainingBlockId ?? 0) > 0 ? trainingBlockId : null,
+      'workoutDayId': (workoutDayId ?? 0) > 0 ? workoutDayId : null,
       'logs':
           sets
               .map(
@@ -196,11 +219,14 @@ class TrainingRepository {
               .toList(),
     };
 
-    if (await _networkInfo.isConnected) {
+    final bool isConnected = await _networkInfo.isConnected;
+    if (isConnected && !usesQueuedProgram) {
       return _apiService.logWorkoutSession(payload);
     } else {
-      // Çevrimdışı: Kuyruğa ekle
+      // Çevrimdışı ya da program henüz kuyrukta: antrenman kuyruğa, programın oluşturulmasının ardına girer (K2-08);
+      // bağlantı varsa kuyruk hemen gönderilir.
       await _syncManager.addToQueue(TrainingApiService.sessionsPath, payload);
+      if (isConnected) unawaited(_syncManager.syncPendingData());
       // Başarılıymış gibi dön (UI'ın devam edebilmesi için)
       return ApiResponse(
         success: true,
@@ -241,6 +267,7 @@ class TrainingRepository {
       if (queued == null || !await _syncManager.removePending(queued.key)) {
         return ApiResponse<void>.error(_sentMeanwhileMessage);
       }
+      await _dropQueuedActivations('${TrainingApiService.activatePath}/local/$localId');
       return ApiResponse<void>(success: true, message: '', timestamp: DateTime.now().toIso8601String());
     }
 
@@ -256,7 +283,15 @@ class TrainingRepository {
     if (res.success && edit != null) {
       await _syncManager.removePending(edit.key);
     }
+    if (res.success) await _dropQueuedActivations('${TrainingApiService.activatePath}/$id');
     return res;
+  }
+
+  /// Silinen programın kuyruktaki etkinleştirmeleri anlamını yitirir; gönderilselerdi "aktarılamadı" görünürlerdi.
+  Future<void> _dropQueuedActivations(String activationPath) async {
+    for (final PendingRecord r in _queuedProgramRecords()) {
+      if (r.endpoint == activationPath) await _syncManager.removePending(r.key);
+    }
   }
 
   Future<ApiResponse<void>> deleteWorkoutSession(int id) {
@@ -301,8 +336,19 @@ class TrainingRepository {
     return _apiService.unassignProgram(programId, studentId);
   }
 
-  Future<ApiResponse<void>> activateProgram(int id) {
-    return _apiService.activateProgram(id);
+  /// Bağlantı yoksa etkinleştirme kuyruğa girer (KR13, G-74); liste programı hemen aktif gösterir. Sunucuya gitmemiş
+  /// program ([id] 0) yerel kimliğiyle etkinleşir: kuyrukta oluşturmasının ardından gider, bağlantı varsa hemen.
+  Future<ApiResponse<void>> activateProgram(int id, {String? localId}) async {
+    if (id == 0 && localId == null) return ApiResponse<void>.error('Program bulunamadı.');
+    final bool isConnected = await _networkInfo.isConnected;
+    if (id != 0 && isConnected) return _apiService.activateProgram(id);
+
+    final String path = id == 0
+        ? '${TrainingApiService.activatePath}/local/$localId'
+        : '${TrainingApiService.activatePath}/$id';
+    await _syncManager.addToQueue(path, <String, dynamic>{});
+    if (isConnected) unawaited(_syncManager.syncPendingData());
+    return ApiResponse<void>(success: true, message: _queuedMessage, timestamp: DateTime.now().toIso8601String());
   }
 
   Future<ApiResponse<TrainingBlock>> approveOrphanedProgram(int id, bool keep) {

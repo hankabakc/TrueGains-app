@@ -258,7 +258,7 @@ void main() {
           coachName: 'Kişisel Program',
           clientId: 0,
           clientName: '',
-          startDate: DateTime(2026, 9, 23),
+          startDate: DateTime(2026, 1, 5),
           endDate: DateTime(2026, 10, 21),
           isActive: false,
           isPersonal: true,
@@ -290,6 +290,57 @@ void main() {
       final TrainingBlock sent =
           verify(() => repository.updatePersonalProgram(5, captureAny())).captured.single as TrainingBlock;
       expect(sent.version, equals(3));
+      await cubit.close();
+    });
+
+    test('düzenleme programın başlangıç tarihini korur; ilerleme haftası sıfırlanmaz', () async {
+      final cubit = await newCubit();
+      cubit.init(block(id: 5, version: 3));
+      cubit.setDurationWeeks(6);
+      when(() => repository.updatePersonalProgram(any(), any())).thenAnswer((_) async => ok<TrainingBlock>(null));
+
+      await cubit.saveProgram('Program');
+
+      final TrainingBlock sent =
+          verify(() => repository.updatePersonalProgram(5, captureAny())).captured.single as TrainingBlock;
+      expect(sent.startDate, equals(DateTime(2026, 1, 5)));
+      expect(sent.endDate, equals(DateTime(2026, 1, 5).add(const Duration(days: 42))));
+      await cubit.close();
+    });
+
+    test('yeni gün ve egzersiz benzersiz negatif geçici kimlik alır; sunucu kimliği korunur', () async {
+      final cubit = await newCubit();
+      cubit.addExercises(0, [exercise(0), exercise(0)]);
+      cubit.addExercises(1, [exercise(0)]);
+      cubit.updateExercise(1, 0, exercise(0).withId(900));
+      when(() => repository.createPersonalProgram(any())).thenAnswer((_) async => ok<TrainingBlock>(null));
+
+      await cubit.saveProgram('Program');
+
+      final TrainingBlock sent =
+          verify(() => repository.createPersonalProgram(captureAny())).captured.single as TrainingBlock;
+      final List<int> dayIds = sent.workoutDays.map((WorkoutDay d) => d.id).toList();
+      final List<int> newExerciseIds = sent.workoutDays[0].exercises.map((WorkoutExercise e) => e.id).toList();
+      expect(dayIds.every((int id) => id < 0), isTrue);
+      expect(dayIds.toSet(), hasLength(7));
+      expect(newExerciseIds.every((int id) => id < 0), isTrue);
+      expect(newExerciseIds.toSet(), hasLength(2));
+      expect(sent.workoutDays[1].exercises.single.id, equals(900));
+      await cubit.close();
+    });
+
+    test('şablonda geçici kimlik verilmez (şablon internet ister)', () async {
+      final cubit = await newCubit();
+      cubit.init(null, isTemplateMode: true);
+      cubit.addExercises(0, [exercise(0)]);
+      when(() => repository.createCoachTemplate(any())).thenAnswer((_) async => ok<TrainingBlock>(null));
+
+      await cubit.saveProgram('Şablon');
+
+      final TrainingBlock sent =
+          verify(() => repository.createCoachTemplate(captureAny())).captured.single as TrainingBlock;
+      expect(sent.workoutDays[0].id, equals(0));
+      expect(sent.workoutDays[0].exercises.single.id, equals(0));
       await cubit.close();
     });
   });
