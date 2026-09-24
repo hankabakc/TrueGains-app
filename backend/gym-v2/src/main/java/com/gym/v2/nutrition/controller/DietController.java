@@ -5,9 +5,11 @@ import java.time.Clock;
 import org.springframework.security.access.prepost.PreAuthorize;
 import com.gym.v2.nutrition.dto.BulkIngredientRequest;
 import com.gym.v2.nutrition.dto.DietAssignmentResponse;
+import com.gym.v2.nutrition.dto.DietProgramDocumentRequest;
 import com.gym.v2.nutrition.dto.DietProgramResponse;
 import com.gym.v2.nutrition.dto.RecipeRequest;
 import com.gym.v2.nutrition.dto.UpdateNutritionGoalsRequest;
+import com.gym.v2.nutrition.service.DietDocumentService;
 import com.gym.v2.nutrition.service.DietIngredientService;
 import com.gym.v2.nutrition.service.DietProgramService;
 import com.gym.v2.nutrition.service.DietTemplateService;
@@ -32,13 +34,16 @@ public class DietController {
 
 	private final DietTemplateService templateService;
 
+	private final DietDocumentService documentService;
+
 	private final Clock clock;
 
 	public DietController(DietProgramService programService, DietIngredientService ingredientService,
-			DietTemplateService templateService, Clock clock) {
+			DietTemplateService templateService, DietDocumentService documentService, Clock clock) {
 		this.programService = programService;
 		this.ingredientService = ingredientService;
 		this.templateService = templateService;
+		this.documentService = documentService;
 		this.clock = clock;
 	}
 
@@ -108,6 +113,13 @@ public class DietController {
 	@PutMapping("/{id}/rename")
 	public ApiResponse<DietProgramResponse> renameProgram(@PathVariable Long id, @RequestParam String name) {
 		return ApiResponse.success(programService.renameProgram(id, name), "Program adı güncellendi.", clock.instant());
+	}
+
+	@PutMapping("/{id}/document")
+	public ApiResponse<DietProgramResponse> saveDocument(@PathVariable Long id,
+			@Valid @RequestBody DietProgramDocumentRequest request) {
+		return ApiResponse.success(documentService.saveDocument(id, request), "Diyet planı kaydedildi.",
+				clock.instant());
 	}
 
 	@DeleteMapping("/meals/ingredients/{ingredientId}")

@@ -22,6 +22,13 @@ public class DietProgram {
 	@Version
 	private Long version;
 
+	/**
+	 * Son uygulanan belgenin cihaz kimliği (G-76): tekrar gelen belge ikinci kez
+	 * yazılmaz.
+	 */
+	@Column(name = "last_edit_id", length = 36)
+	private String lastEditId;
+
 	@ManyToOne(fetch = FetchType.LAZY)
 	@JoinColumn(name = "owner_id", nullable = false)
 	private AppUser owner;
@@ -118,6 +125,14 @@ public class DietProgram {
 
 	public Long getVersion() {
 		return version;
+	}
+
+	public String getLastEditId() {
+		return lastEditId;
+	}
+
+	public void setLastEditId(String lastEditId) {
+		this.lastEditId = lastEditId;
 	}
 
 	public AppUser getOwner() {

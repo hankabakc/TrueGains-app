@@ -21,6 +21,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.Clock;
 import java.util.List;
 
 /**
@@ -50,10 +51,12 @@ public class DietIngredientService {
 
 	private final SimpMessagingTemplate messagingTemplate;
 
+	private final Clock clock;
+
 	public DietIngredientService(MealRepository mealRepository, MealIngredientRepository ingredientRepository,
 			FoodRepository foodRepository, RecipeRepository recipeRepository, DietProgramService programService,
 			UserContextService userContextService, NutritionMapper nutritionMapper,
-			ApplicationEventPublisher eventPublisher, SimpMessagingTemplate messagingTemplate) {
+			ApplicationEventPublisher eventPublisher, SimpMessagingTemplate messagingTemplate, Clock clock) {
 		this.mealRepository = mealRepository;
 		this.ingredientRepository = ingredientRepository;
 		this.foodRepository = foodRepository;
@@ -63,6 +66,7 @@ public class DietIngredientService {
 		this.nutritionMapper = nutritionMapper;
 		this.eventPublisher = eventPublisher;
 		this.messagingTemplate = messagingTemplate;
+		this.clock = clock;
 	}
 
 	@Transactional
@@ -247,6 +251,10 @@ public class DietIngredientService {
 	}
 
 	private void handleSyncAndNotification(DietProgram program) {
+		// G-76: besin değişikliği programın kendi alanına dokunmadığı için @Version
+		// ilerlemiyordu; sürüm kilidi
+		// (tek belge ucu) bu değişikliği göremezdi. Programı kirletmek sürümü artırır.
+		program.onUpdate(clock.instant());
 		if (program.isTemplate()) {
 			eventPublisher.publishEvent(new DietTemplateUpdatedEvent(program.getId()));
 		}

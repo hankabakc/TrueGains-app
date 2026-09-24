@@ -209,6 +209,48 @@ void main() {
     );
 
     testWidgets(
+      'sunucu kimlikli yarım antrenman başka programın aynı sıra ve egzersizli günüyle sıfırlanır',
+      (WidgetTester tester) async {
+        final ongoingDay = WorkoutDay(
+          id: 5,
+          name: '1. Gün - Göğüs',
+          dayOrder: 1,
+          exercises: [ex],
+        );
+
+        when(() => mockBloc.state).thenReturn(
+          ActiveWorkoutState(
+            status: ActiveWorkoutStatus.active,
+            workoutDay: ongoingDay,
+            trainingBlockId: 5,
+            completedSets: [
+              CompletedSetData(
+                workoutExerciseId: 50,
+                exerciseName: 'Bench Press',
+                setIndex: 1,
+                weight: 80.0,
+                reps: 10,
+                durationSeconds: 45,
+                completedAt: DateTime(2026, 9, 23, 10, 0),
+              ),
+            ],
+          ),
+        );
+
+        final differentProgramDay = WorkoutDay(
+          id: 77,
+          name: '1. Gün - Göğüs',
+          dayOrder: 1,
+          exercises: [ex],
+        );
+
+        await pumpActiveWorkoutPage(tester, differentProgramDay, blockId: 9);
+
+        verify(() => mockBloc.add(any(that: isA<StartWorkout>()))).called(1);
+      },
+    );
+
+    testWidgets(
       'önceki antrenman bitmişse (finished) aynı gün açılsa bile yeni StartWorkout başlatılır',
       (WidgetTester tester) async {
         final finishedDay = WorkoutDay(

@@ -161,6 +161,16 @@ public class DietProgramService {
 		AppUser currentUser = userContextService.getCurrentUser();
 		validateOwnershipAndModifiability(program, currentUser);
 
+		applyGoals(program, request);
+
+		program.onUpdate(clock.instant());
+		DietProgram saved = programRepository.save(program);
+		auditLogService.log("DIET_GOALS_UPDATED", currentUser.getEmail(), "Diyet hedefleri güncellendi.");
+		handleSyncAndNotification(saved);
+		return nutritionMapper.toProgramResponse(saved, currentUser.getId());
+	}
+
+	public void applyGoals(DietProgram program, UpdateNutritionGoalsRequest request) {
 		if (isAnyNegative(request.targetCalories(), request.targetProtein(), request.targetCarbs(), request.targetFat(),
 				request.targetSugar(), request.targetFiber(), request.targetSodium(), request.targetCholesterol(),
 				request.targetPotassium())) {
@@ -194,12 +204,6 @@ public class DietProgramService {
 		if (request.targetPotassium() != null) {
 			program.setTargetPotassium(request.targetPotassium());
 		}
-
-		program.onUpdate(clock.instant());
-		DietProgram saved = programRepository.save(program);
-		auditLogService.log("DIET_GOALS_UPDATED", currentUser.getEmail(), "Diyet hedefleri güncellendi.");
-		handleSyncAndNotification(saved);
-		return nutritionMapper.toProgramResponse(saved, currentUser.getId());
 	}
 
 	@Transactional
@@ -354,7 +358,7 @@ public class DietProgramService {
 		return false;
 	}
 
-	private void handleSyncAndNotification(DietProgram program) {
+	public void handleSyncAndNotification(DietProgram program) {
 		if (program.isTemplate()) {
 			eventPublisher.publishEvent(new DietTemplateUpdatedEvent(program.getId()));
 		}
