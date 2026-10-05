@@ -3,6 +3,7 @@ package com.gym.v2.social.service;
 import com.gym.v2.auth.entity.AppUser;
 import com.gym.v2.auth.repository.AppUserRepository;
 import com.gym.v2.core.exception.BadRequestException;
+import com.gym.v2.core.exception.ConflictException;
 import com.gym.v2.core.exception.NotFoundException;
 import com.gym.v2.core.security.service.UserContextService;
 import com.gym.v2.social.dto.CreateReportRequest;
@@ -90,7 +91,7 @@ class UserReportServiceTest {
 			.thenReturn(true);
 
 		assertThatThrownBy(() -> service.submit(new CreateReportRequest(7L, ReportReason.HARASSMENT, "tekrar")))
-			.isInstanceOf(BadRequestException.class);
+			.isInstanceOf(ConflictException.class);
 
 		verify(userReportRepository, never()).save(any());
 	}

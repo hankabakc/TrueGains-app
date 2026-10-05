@@ -4,6 +4,7 @@ import com.gym.v2.auth.dto.RegisterRequest;
 import com.gym.v2.auth.entity.UserRole;
 import com.gym.v2.auth.service.AuthenticationService;
 import com.gym.v2.core.exception.BadRequestException;
+import com.gym.v2.core.exception.ConflictException;
 import com.gym.v2.core.exception.GlobalExceptionHandler;
 import com.gym.v2.core.service.LogService;
 import java.math.BigDecimal;
@@ -117,13 +118,13 @@ class AuthenticationControllerTest {
 	}
 
 	@Test
-	void register_serviceThrowsBadRequestException_returnsBadRequestWithMessage() throws Exception {
+	void register_emailInUse_returnsConflictWithMessage() throws Exception {
 		String body = validJson("valid@example.com", "Password123!");
-		doThrow(new BadRequestException("Bu e-posta kullanımda")).when(authenticationService)
+		doThrow(new ConflictException("Bu e-posta kullanımda")).when(authenticationService)
 			.register(any(RegisterRequest.class));
 
 		mockMvc.perform(post("/api/v1/auth/register").contentType(MediaType.APPLICATION_JSON).content(body))
-			.andExpect(status().isBadRequest())
+			.andExpect(status().isConflict())
 			.andExpect(jsonPath("$.message").value("Bu e-posta kullanımda"));
 	}
 

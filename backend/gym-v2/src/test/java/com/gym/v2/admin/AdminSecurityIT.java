@@ -32,12 +32,11 @@ class AdminSecurityIT extends IntegrationTestBase {
 			"/api/v1/admin/audit/actions", "/api/v1/admin/reports");
 
 	/**
-	 * Kimlik dogrulamasi olmayan istek 401 DEGIL 403 aliyor: bu uygulamanin mevcut
-	 * davranisi (giris noktasi 403 donuyor). Test o davranisi oldugu gibi kaydediyor.
+	 * Kimlik doğrulaması olmayan istek 401 Unauthorized alır.
 	 */
 	@Test
 	void overview_withoutAuthentication_isRejected() throws Exception {
-		mockMvc.perform(get(OVERVIEW)).andExpect(status().isForbidden());
+		mockMvc.perform(get(OVERVIEW)).andExpect(status().isUnauthorized());
 	}
 
 	@Test
@@ -81,7 +80,7 @@ class AdminSecurityIT extends IntegrationTestBase {
 	@Test
 	void everyReadEndpoint_withoutAuthentication_isRejected() throws Exception {
 		for (String endpoint : READ_ENDPOINTS) {
-			mockMvc.perform(get(endpoint)).andExpect(status().isForbidden());
+			mockMvc.perform(get(endpoint)).andExpect(status().isUnauthorized());
 		}
 	}
 

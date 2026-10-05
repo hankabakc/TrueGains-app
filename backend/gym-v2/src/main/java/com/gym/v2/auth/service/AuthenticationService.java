@@ -14,8 +14,11 @@ import com.gym.v2.auth.repository.ClientRepository;
 import com.gym.v2.auth.repository.CoachRepository;
 import com.gym.v2.auth.repository.RefreshTokenRepository;
 import com.gym.v2.core.exception.BadRequestException;
+import com.gym.v2.core.exception.ConflictException;
 import com.gym.v2.core.exception.NotFoundException;
 import com.gym.v2.core.exception.PhoneNotVerifiedException;
+import com.gym.v2.core.exception.TooManyRequestsException;
+import com.gym.v2.core.exception.UnauthorizedException;
 import com.gym.v2.core.security.EncryptionConverter;
 import com.gym.v2.core.security.service.JwtService;
 import org.slf4j.Logger;
@@ -127,7 +130,7 @@ public class AuthenticationService {
 				if (logger.isWarnEnabled()) {
 					logger.warn("[AUTH] Kayıt başarısız, e-posta zaten kullanımda: {}", maskEmail(normalizedEmail));
 				}
-				throw new BadRequestException(
+				throw new ConflictException(
 						messageSource.getMessage("error.auth.email-in-use", null, LocaleContextHolder.getLocale()));
 			}
 			deleteUnverifiedRegistration(existing);
@@ -214,11 +217,11 @@ public class AuthenticationService {
 	/**
 	 * OTP yeniden gönderimi için asgari bekleme süresini uygular (SMS bombardımanı
 	 * koruması).
-	 * @throws BadRequestException soğuma süresi dolmadan yeni kod istenirse
+	 * @throws TooManyRequestsException soğuma süresi dolmadan yeni kod istenirse
 	 */
 	private void assertResendCooldownElapsed(AppUser user) {
 		if (isResendCooldownActive(user)) {
-			throw new BadRequestException(
+			throw new TooManyRequestsException(
 					"Yeni kod istemek için " + OTP_RESEND_COOLDOWN_SECONDS + " saniye beklemelisiniz.");
 		}
 	}
@@ -369,8 +372,7 @@ public class AuthenticationService {
 		}
 
 		AppUser user = userRepository.findByEmail(normalizedEmail)
-			.orElseThrow(() -> new BadRequestException(messageSource
-				.getMessage("error.auth.forgot-password.user-not-found", null, LocaleContextHolder.getLocale())));
+			.orElseThrow(() -> new BadRequestException("Geçersiz doğrulama kodu."));
 
 		validateOtpOrThrow(user, code);
 
@@ -420,7 +422,7 @@ public class AuthenticationService {
 			.orElseThrow(() -> new NotFoundException("Kullanıcı bulunamadı."));
 
 		if (Boolean.TRUE.equals(user.getIsPhoneVerified())) {
-			throw new BadRequestException("Telefon numarası zaten doğrulanmış.");
+			throw new ConflictException("Telefon numarası zaten doğrulanmış.");
 		}
 
 		validateOtpOrThrow(user, code);
@@ -448,7 +450,7 @@ public class AuthenticationService {
 			.orElseThrow(() -> new NotFoundException("Kullanıcı bulunamadı."));
 
 		if (Boolean.TRUE.equals(user.getIsPhoneVerified())) {
-			throw new BadRequestException("Telefon numarası zaten doğrulanmış.");
+			throw new ConflictException("Telefon numarası zaten doğrulanmış.");
 		}
 
 		assertResendCooldownElapsed(user);
@@ -526,7 +528,7 @@ public class AuthenticationService {
 	@Transactional
 	public AuthServiceResult refreshToken(String refreshTokenStr, String deviceId) {
 		RefreshToken refreshToken = refreshTokenRepository.findByToken(refreshTokenStr)
-			.orElseThrow(() -> new BadRequestException(messageSource.getMessage("error.auth.invalid-refresh-token",
+			.orElseThrow(() -> new UnauthorizedException(messageSource.getMessage("error.auth.invalid-refresh-token",
 					null, LocaleContextHolder.getLocale())));
 
 		if (refreshToken.getDeviceId() != null && !refreshToken.getDeviceId().equals(deviceId)) {
@@ -535,7 +537,7 @@ public class AuthenticationService {
 
 		if (refreshToken.getExpiryDate().isBefore(clock.instant())) {
 			refreshTokenRepository.delete(refreshToken);
-			throw new BadRequestException(messageSource.getMessage("error.auth.refresh-token-expired", null,
+			throw new UnauthorizedException(messageSource.getMessage("error.auth.refresh-token-expired", null,
 					LocaleContextHolder.getLocale()));
 		}
 

@@ -56,7 +56,7 @@ void main() {
           handler.reject(DioException(
             requestOptions: options,
             type: DioExceptionType.badResponse,
-            response: Response<Map<String, dynamic>>(requestOptions: options, statusCode: status),
+            response: Response<dynamic>(requestOptions: options, statusCode: status, data: data),
           ));
         } else {
           handler.resolve(Response<Map<String, dynamic>>(
@@ -194,5 +194,35 @@ void main() {
 
     expect(list.map((Measurement m) => m.id).toList(), <int?>[8]);
     verifyNever(() => syncManager.pendingRecords());
+  });
+
+  test('getMyMeasurements 409 durumunda sunucu mesajı varsa fırlatır, yoksa çakışma metniyle fırlatır', () async {
+    final MeasurementRepository repoWithMsg = repositoryWith(
+      status: 409,
+      data: <String, dynamic>{
+        'success': false,
+        'message': 'Bu antrenörü zaten değerlendirdiniz.',
+      },
+    );
+
+    expect(
+      () => repoWithMsg.getMyMeasurements(),
+      throwsA(isA<Exception>().having(
+        (e) => e.toString(),
+        'message',
+        contains('Bu antrenörü zaten değerlendirdiniz.'),
+      )),
+    );
+
+    final MeasurementRepository repoNullData = repositoryWith(status: 409, data: null);
+
+    expect(
+      () => repoNullData.getMyMeasurements(),
+      throwsA(isA<Exception>().having(
+        (e) => e.toString(),
+        'message',
+        contains('Eş zamanlı güncelleme çakışması: Veri başka bir yerde güncellenmiş. Lütfen sayfayı yenileyip tekrar deneyin.'),
+      )),
+    );
   });
 }

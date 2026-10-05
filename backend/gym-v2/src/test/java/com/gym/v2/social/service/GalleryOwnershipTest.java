@@ -6,12 +6,15 @@ import com.gym.v2.auth.entity.CoachEntity;
 import com.gym.v2.auth.repository.AppUserRepository;
 import com.gym.v2.auth.repository.ClientRepository;
 import com.gym.v2.auth.repository.CoachRepository;
+import com.gym.v2.core.exception.ConflictException;
 import com.gym.v2.core.exception.NotFoundException;
 import com.gym.v2.core.security.EncryptionConverter;
+import com.gym.v2.finance.entity.ClientSubscription;
 import com.gym.v2.finance.repository.ClientSubscriptionRepository;
 import com.gym.v2.social.dto.AddGalleryItemRequest;
 import com.gym.v2.social.entity.ClientGallery;
 import com.gym.v2.social.entity.CoachGallery;
+import com.gym.v2.social.entity.CoachReview;
 import org.springframework.security.access.AccessDeniedException;
 import com.gym.v2.social.repository.ClientGalleryRepository;
 import com.gym.v2.social.repository.CoachGalleryRepository;
@@ -205,6 +208,35 @@ class GalleryOwnershipTest {
 		verify(clientGalleryRepository, never()).save(any());
 		verify(reviewRepository, never()).save(any());
 		verify(coachGalleryRepository, never()).save(any());
+	}
+
+	@Test
+	void addReview_secondTime_isConflictAndSavesNothing() {
+		Long coachId = 2L;
+		AppUser coachUser = userWithId(coachId, "coach@test.com");
+
+		CoachEntity coach = new CoachEntity();
+		coach.setUserId(coachId);
+		when(coachRepository.findByUserId(coachId)).thenReturn(Optional.of(coach));
+
+		ClientEntity client = new ClientEntity();
+		client.setUserId(currentUser.getId());
+		when(clientRepository.findByUserId(currentUser.getId())).thenReturn(Optional.of(client));
+
+		ClientSubscription activeSub = new ClientSubscription();
+		activeSub.setCoach(coachUser);
+		when(subscriptionRepository.findActiveSubscriptionByClientId(client.getUserId()))
+			.thenReturn(Optional.of(activeSub));
+
+		CoachReview existingReview = new CoachReview();
+		when(reviewRepository.findByCoachUserIdAndClientUserId(coachId, client.getUserId()))
+			.thenReturn(Optional.of(existingReview));
+
+		assertThatThrownBy(() -> coachProfileService.addReview(coachId, 5, "Harika"))
+			.isInstanceOf(ConflictException.class)
+			.hasMessage("Bu antrenörü zaten değerlendirdiniz.");
+
+		verify(reviewRepository, never()).save(any());
 	}
 
 }

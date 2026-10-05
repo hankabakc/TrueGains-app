@@ -18,6 +18,7 @@ import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import jakarta.servlet.http.HttpServletRequest;
 
 import java.time.Clock;
 import java.util.HashMap;
@@ -64,8 +65,7 @@ public class GlobalExceptionHandler {
 	 */
 	@ExceptionHandler(BadRequestException.class)
 	@ResponseStatus(HttpStatus.BAD_REQUEST)
-	public ApiResponse<Void> handleBadRequestException(BadRequestException ex,
-			jakarta.servlet.http.HttpServletRequest request) {
+	public ApiResponse<Void> handleBadRequestException(BadRequestException ex, HttpServletRequest request) {
 		log.warn("[BAD REQUEST] {} {} → {}", request.getMethod(), request.getRequestURI(), ex.getMessage());
 		return ApiResponse.error(ex.getMessage(), clock.instant());
 	}
@@ -76,9 +76,22 @@ public class GlobalExceptionHandler {
 	 */
 	@ExceptionHandler(ConflictException.class)
 	@ResponseStatus(HttpStatus.CONFLICT)
-	public ApiResponse<Void> handleConflictException(ConflictException ex,
-			jakarta.servlet.http.HttpServletRequest request) {
+	public ApiResponse<Void> handleConflictException(ConflictException ex, HttpServletRequest request) {
 		log.warn("[CONFLICT] {} {} → {}", request.getMethod(), request.getRequestURI(), ex.getMessage());
+		return ApiResponse.error(ex.getMessage(), clock.instant());
+	}
+
+	@ExceptionHandler(UnauthorizedException.class)
+	@ResponseStatus(HttpStatus.UNAUTHORIZED)
+	public ApiResponse<Void> handleUnauthorizedException(UnauthorizedException ex, HttpServletRequest request) {
+		log.warn("[UNAUTHORIZED] {} {} → {}", request.getMethod(), request.getRequestURI(), ex.getMessage());
+		return ApiResponse.error(ex.getMessage(), clock.instant());
+	}
+
+	@ExceptionHandler(TooManyRequestsException.class)
+	@ResponseStatus(HttpStatus.TOO_MANY_REQUESTS)
+	public ApiResponse<Void> handleTooManyRequestsException(TooManyRequestsException ex, HttpServletRequest request) {
+		log.warn("[TOO MANY] {} {} → {}", request.getMethod(), request.getRequestURI(), ex.getMessage());
 		return ApiResponse.error(ex.getMessage(), clock.instant());
 	}
 
@@ -89,8 +102,7 @@ public class GlobalExceptionHandler {
 	 */
 	@ExceptionHandler(OptimisticLockingFailureException.class)
 	@ResponseStatus(HttpStatus.CONFLICT)
-	public ApiResponse<Void> handleOptimisticLock(OptimisticLockingFailureException ex,
-			jakarta.servlet.http.HttpServletRequest request) {
+	public ApiResponse<Void> handleOptimisticLock(OptimisticLockingFailureException ex, HttpServletRequest request) {
 		log.warn("[CONFLICT] {} {} → eşzamanlı güncelleme", request.getMethod(), request.getRequestURI());
 		return ApiResponse.error(
 				"Kayıt aynı anda başka bir yerde değiştirildi; sunucudaki hâli geçerli. Yenileyip tekrar deneyin.",

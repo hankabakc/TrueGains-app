@@ -95,10 +95,10 @@ class FinanceAuthorizationIT extends IntegrationTestBase {
 
 	@Test
 	void financeEndpoints_rejectUnauthenticatedRequests() throws Exception {
-		mockMvc.perform(get("/api/v1/finance/transactions")).andExpect(status().isForbidden());
-		mockMvc.perform(get("/api/v1/finance/coach/packages")).andExpect(status().isForbidden());
+		mockMvc.perform(get("/api/v1/finance/transactions")).andExpect(status().isUnauthorized());
+		mockMvc.perform(get("/api/v1/finance/coach/packages")).andExpect(status().isUnauthorized());
 		mockMvc.perform(post("/api/v1/finance/cart/add/1").contentType(MediaType.APPLICATION_JSON))
-			.andExpect(status().isForbidden());
+			.andExpect(status().isUnauthorized());
 	}
 
 	// ---------------------------------------------------------------------------

@@ -11,6 +11,9 @@ import com.gym.v2.auth.repository.ClientRepository;
 import com.gym.v2.auth.repository.CoachRepository;
 import com.gym.v2.auth.repository.RefreshTokenRepository;
 import com.gym.v2.core.exception.BadRequestException;
+import com.gym.v2.core.exception.ConflictException;
+import com.gym.v2.core.exception.TooManyRequestsException;
+import com.gym.v2.core.exception.UnauthorizedException;
 import com.gym.v2.core.security.EncryptionConverter;
 import com.gym.v2.core.security.service.JwtService;
 import com.gym.v2.auth.service.OtpService;
@@ -128,12 +131,12 @@ class AuthenticationServiceTest {
 	}
 
 	@Test
-	void register_emailAlreadyExists_throwsBadRequestExceptionAndDoesNotSave() {
+	void register_emailAlreadyExists_throwsConflictExceptionAndDoesNotSave() {
 		RegisterRequest request = RegisterRequestFixture.valid("ali@test.com", UserRole.CLIENT, "+905555555555");
 		when(userRepository.findByEmail("ali@test.com")).thenReturn(Optional
 			.of(AppUser.builder().email("ali@test.com").role(UserRole.CLIENT).isPhoneVerified(true).build()));
 
-		assertThatThrownBy(() -> authenticationService.register(request)).isInstanceOf(BadRequestException.class);
+		assertThatThrownBy(() -> authenticationService.register(request)).isInstanceOf(ConflictException.class);
 
 		verify(userRepository, never()).saveAndFlush(any(AppUser.class));
 	}
@@ -262,12 +265,12 @@ class AuthenticationServiceTest {
 	}
 
 	@Test
-	void resendOtp_withinCooldownWindow_throwsBadRequestAndDoesNotSendSms() {
+	void resendOtp_withinCooldownWindow_throwsTooManyRequestsAndDoesNotSendSms() {
 		AppUser user = unverifiedUser("123456", NOW.plus(5, ChronoUnit.MINUTES), 0, NOW.minusSeconds(30));
 		when(userRepository.findByEmail("otp@test.com")).thenReturn(Optional.of(user));
 
 		assertThatThrownBy(() -> authenticationService.resendOtp("otp@test.com"))
-			.isInstanceOf(BadRequestException.class);
+			.isInstanceOf(TooManyRequestsException.class);
 
 		verify(otpService, never()).sendOtpSimulation(any(), any());
 	}
@@ -381,7 +384,7 @@ class AuthenticationServiceTest {
 		when(userRepository.findByEmail("otp@test.com")).thenReturn(Optional.of(user));
 
 		assertThatThrownBy(() -> authenticationService.resendOtp("otp@test.com"))
-			.isInstanceOf(BadRequestException.class);
+			.isInstanceOf(TooManyRequestsException.class);
 
 		verify(otpService, never()).sendOtpSimulation(any(), any());
 	}
@@ -437,11 +440,11 @@ class AuthenticationServiceTest {
 	}
 
 	@Test
-	void refreshToken_unknownToken_throwsBadRequest() {
+	void refreshToken_unknownToken_throwsUnauthorized() {
 		when(refreshTokenRepository.findByToken("yok")).thenReturn(Optional.empty());
 
 		assertThatThrownBy(() -> authenticationService.refreshToken("yok", "device-1"))
-			.isInstanceOf(BadRequestException.class);
+			.isInstanceOf(UnauthorizedException.class);
 	}
 
 	@Test
@@ -463,7 +466,7 @@ class AuthenticationServiceTest {
 		when(refreshTokenRepository.findByToken("tok")).thenReturn(Optional.of(rt));
 
 		assertThatThrownBy(() -> authenticationService.refreshToken("tok", "device-1"))
-			.isInstanceOf(BadRequestException.class);
+			.isInstanceOf(UnauthorizedException.class);
 
 		verify(refreshTokenRepository).delete(rt);
 	}
@@ -529,7 +532,7 @@ class AuthenticationServiceTest {
 
 		assertThatThrownBy(() -> authenticationService
 			.register(RegisterRequestFixture.valid("var@test.com", UserRole.CLIENT, "+905555555555")))
-			.isInstanceOf(BadRequestException.class);
+			.isInstanceOf(ConflictException.class);
 
 		// Doğrulanmış gerçek hesap hiçbir koşulda silinmez.
 		verify(userRepository, never()).delete(any());
@@ -543,6 +546,39 @@ class AuthenticationServiceTest {
 		// Kullanıcı sıralama (enumeration) sızıntısı olmaması için davranış aynı kalmalı.
 		assertThatThrownBy(() -> authenticationService.login(new LoginRequest("yok@test.com", "wrong", "device-1")))
 			.isInstanceOf(BadCredentialsException.class);
+	}
+
+	@Test
+	void resetPassword_unknownEmail_respondsExactlyLikeWrongCode() {
+		when(userRepository.findByEmail("yok@test.com")).thenReturn(Optional.empty());
+
+		assertThatThrownBy(() -> authenticationService.resetPassword("yok@test.com", "123456", "YeniSifre123!"))
+			.isInstanceOf(BadRequestException.class)
+			.hasMessage("Geçersiz doğrulama kodu.");
+
+		verify(passwordEncoder, never()).encode(any());
+		verify(userRepository, never()).save(any());
+	}
+
+	@Test
+	void phoneAlreadyVerified_isConflict() {
+		AppUser verifiedUser = AppUser.builder()
+			.email("dogrulanmis@test.com")
+			.role(UserRole.CLIENT)
+			.isPhoneVerified(true)
+			.build();
+		when(userRepository.findByEmail("dogrulanmis@test.com")).thenReturn(Optional.of(verifiedUser));
+
+		assertThatThrownBy(() -> authenticationService.verifyOtp("dogrulanmis@test.com", "123456"))
+			.isInstanceOf(ConflictException.class)
+			.hasMessage("Telefon numarası zaten doğrulanmış.");
+
+		assertThatThrownBy(() -> authenticationService.resendOtp("dogrulanmis@test.com"))
+			.isInstanceOf(ConflictException.class)
+			.hasMessage("Telefon numarası zaten doğrulanmış.");
+
+		verify(otpService, never()).sendOtpSimulation(any(), any());
+		verify(userRepository, never()).save(any());
 	}
 
 }

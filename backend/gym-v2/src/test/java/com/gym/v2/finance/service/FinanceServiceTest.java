@@ -6,6 +6,7 @@ import com.gym.v2.auth.repository.AppUserRepository;
 import com.gym.v2.auth.repository.ClientRepository;
 import com.gym.v2.auth.repository.CoachRepository;
 import com.gym.v2.core.exception.BadRequestException;
+import com.gym.v2.core.exception.ConflictException;
 import com.gym.v2.core.exception.NotFoundException;
 import com.gym.v2.core.security.EncryptionConverter;
 import com.gym.v2.finance.dto.PaymentTransactionDTO;
@@ -202,14 +203,14 @@ class FinanceServiceTest {
 	}
 
 	@Test
-	void removeFromCart_transactionStatusNotPending_throwsBadRequestExceptionAndDoesNotDelete() {
+	void removeFromCart_transactionStatusNotPending_throwsConflictExceptionAndDoesNotDelete() {
 		AppUser client = createUser(1L, "client@test.com");
 		PaymentTransaction tx = new PaymentTransaction(100L, client, new BigDecimal("100.00"), "COMPLETED",
 				Instant.now());
 
 		when(paymentTransactionRepository.findById(100L)).thenReturn(Optional.of(tx));
 
-		assertThatThrownBy(() -> financeService.removeFromCart(1L, 100L)).isInstanceOf(BadRequestException.class);
+		assertThatThrownBy(() -> financeService.removeFromCart(1L, 100L)).isInstanceOf(ConflictException.class);
 
 		verify(paymentTransactionRepository, never()).delete(any());
 	}
@@ -274,7 +275,7 @@ class FinanceServiceTest {
 		when(paymentTransactionRepository.findById(100L)).thenReturn(Optional.of(tx));
 
 		assertThatThrownBy(() -> financeService.processPaymentForTransaction(1L, 100L, cardRequest("1234567890123456")))
-			.isInstanceOf(BadRequestException.class);
+			.isInstanceOf(ConflictException.class);
 
 		// Çift tahsilat koruması: ikinci abonelik açılmamalı.
 		verify(clientSubscriptionRepository, never()).save(any());
@@ -687,6 +688,19 @@ class FinanceServiceTest {
 			.hasMessage("İşlem bulunamadı.");
 
 		verifyNoInteractions(paymentGatewayService);
+	}
+
+	@Test
+	void initiateCheckout_completedTransaction_isConflictAndDoesNotCallGateway() {
+		AppUser client = createUser(1L, "client@test.com");
+		PaymentTransaction tx = new PaymentTransaction(100L, client, activePackage(), new BigDecimal("150.00"),
+				"COMPLETED", Instant.now());
+		when(paymentTransactionRepository.findById(100L)).thenReturn(Optional.of(tx));
+
+		assertThatThrownBy(() -> financeService.initiateCheckout(1L, 100L)).isInstanceOf(ConflictException.class)
+			.hasMessage("Bu işlem zaten tamamlanmış.");
+
+		verify(paymentGatewayService, never()).createCheckoutSession(any());
 	}
 
 }

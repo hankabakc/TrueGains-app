@@ -7,11 +7,13 @@ import com.gym.v2.auth.entity.CoachEntity;
 import com.gym.v2.auth.repository.ClientRepository;
 import com.gym.v2.auth.repository.CoachRepository;
 import com.gym.v2.core.exception.BadRequestException;
+import com.gym.v2.core.exception.ConflictException;
 import com.gym.v2.core.exception.NotFoundException;
 import com.gym.v2.core.security.EncryptionConverter;
 import com.gym.v2.core.security.SecurityUtils;
 import com.gym.v2.finance.entity.ClientSubscription;
 import com.gym.v2.finance.repository.ClientSubscriptionRepository;
+import org.springframework.web.util.HtmlUtils;
 import com.gym.v2.social.dto.*;
 import com.gym.v2.social.entity.CoachGallery;
 import com.gym.v2.social.entity.CoachReview;
@@ -120,15 +122,14 @@ public class CoachProfileService {
 
 		// Bulgu #5: Mükerrer değerlendirme kontrolü
 		reviewRepository.findByCoachUserIdAndClientUserId(coachId, client.getUserId()).ifPresent(r -> {
-			throw new BadRequestException("Bu antrenörü zaten değerlendirdiniz.");
+			throw new ConflictException("Bu antrenörü zaten değerlendirdiniz.");
 		});
 
 		CoachReview review = new CoachReview();
 		review.setCoach(coach);
 		review.setClient(client);
 		review.setRating(rating);
-		String sanitizedComment = comment != null ? org.springframework.web.util.HtmlUtils.htmlEscape(comment.trim())
-				: null;
+		String sanitizedComment = comment != null ? HtmlUtils.htmlEscape(comment.trim()) : null;
 		review.setComment(sanitizedComment);
 		review.setPackageName(activeSub.getPkg().getName());
 

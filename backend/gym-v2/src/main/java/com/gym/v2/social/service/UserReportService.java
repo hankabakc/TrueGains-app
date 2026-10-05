@@ -3,6 +3,7 @@ package com.gym.v2.social.service;
 import com.gym.v2.auth.entity.AppUser;
 import com.gym.v2.auth.repository.AppUserRepository;
 import com.gym.v2.core.exception.BadRequestException;
+import com.gym.v2.core.exception.ConflictException;
 import com.gym.v2.core.exception.NotFoundException;
 import com.gym.v2.core.security.service.UserContextService;
 import com.gym.v2.social.dto.CreateReportRequest;
@@ -50,7 +51,7 @@ public class UserReportService {
 		// baglandiktan SONRA tekrar raporlanabilir; yeni bir olay olabilir.
 		if (userReportRepository.existsByReporterIdAndReportedUserIdAndStatus(reporter.getId(),
 				request.reportedUserId(), ReportStatus.PENDING)) {
-			throw new BadRequestException("Bu kullanıcı için zaten inceleme bekleyen bir şikâyetiniz var.");
+			throw new ConflictException("Bu kullanıcı için zaten inceleme bekleyen bir şikâyetiniz var.");
 		}
 
 		userReportRepository.save(new UserReport(reporter.getId(), request.reportedUserId(), request.reason(),

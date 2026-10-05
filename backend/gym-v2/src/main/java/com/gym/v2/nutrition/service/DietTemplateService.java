@@ -4,7 +4,7 @@ import com.gym.v2.auth.entity.AppUser;
 import com.gym.v2.auth.entity.ClientEntity;
 import com.gym.v2.auth.entity.UserRole;
 import com.gym.v2.auth.repository.ClientRepository;
-import com.gym.v2.core.exception.BadRequestException;
+import com.gym.v2.core.exception.ConflictException;
 import com.gym.v2.core.exception.NotFoundException;
 import com.gym.v2.core.security.service.AuditLogService;
 import com.gym.v2.core.security.service.UserContextService;
@@ -130,7 +130,7 @@ public class DietTemplateService {
 
 		// Mükerrer Atama Kontrolü
 		if (programRepository.existsByOwnerIdAndOriginalTemplateId(clientUser.getId(), template.getId())) {
-			throw new BadRequestException("Bu şablon daha önce bu öğrenciye atanmış!");
+			throw new ConflictException("Bu şablon daha önce bu öğrenciye atanmış!");
 		}
 
 		// Derin kopya (Deep Copy) oluştur

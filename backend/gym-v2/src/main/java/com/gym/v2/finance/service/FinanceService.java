@@ -6,6 +6,7 @@ import com.gym.v2.auth.repository.AppUserRepository;
 import com.gym.v2.auth.repository.ClientRepository;
 import com.gym.v2.auth.repository.CoachRepository;
 import com.gym.v2.core.exception.BadRequestException;
+import com.gym.v2.core.exception.ConflictException;
 import com.gym.v2.core.exception.NotFoundException;
 import com.gym.v2.core.security.SecurityUtils;
 import com.gym.v2.core.security.EncryptionConverter;
@@ -93,7 +94,7 @@ public class FinanceService {
 			throw new NotFoundException("İşlem bulunamadı.");
 		}
 		if (!tx.getStatus().equals("PENDING")) {
-			throw new BadRequestException("Bu işlem zaten tamamlanmış.");
+			throw new ConflictException("Bu işlem zaten tamamlanmış.");
 		}
 
 		Order order = new Order();
@@ -385,7 +386,7 @@ public class FinanceService {
 			throw new NotFoundException("İşlem bulunamadı.");
 		}
 		if (!tx.getStatus().equals("PENDING")) {
-			throw new BadRequestException("Sadece ödeme bekleyen işlemler sepetten kaldırılabilir.");
+			throw new ConflictException("Sadece ödeme bekleyen işlemler sepetten kaldırılabilir.");
 		}
 		paymentTransactionRepository.delete(tx);
 	}
@@ -405,7 +406,7 @@ public class FinanceService {
 			throw new NotFoundException("İşlem bulunamadı.");
 		}
 		if (!tx.getStatus().equals("PENDING")) {
-			throw new BadRequestException("Bu işlemin ödemesi zaten gerçekleştirilmiş.");
+			throw new ConflictException("Bu işlemin ödemesi zaten gerçekleştirilmiş.");
 		}
 
 		SubscriptionPackage pkg = tx.getPkg();

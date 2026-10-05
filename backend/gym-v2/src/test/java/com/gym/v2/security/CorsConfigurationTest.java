@@ -21,7 +21,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class CorsConfigurationTest {
 
 	private UrlBasedCorsConfigurationSource sourceFor(List<String> origins) {
-		SecurityConfig config = new SecurityConfig(null, null);
+		SecurityConfig config = new SecurityConfig(null, null, null);
 		ReflectionTestUtils.setField(config, "allowedOrigins", origins);
 		return (UrlBasedCorsConfigurationSource) config.corsConfigurationSource();
 	}

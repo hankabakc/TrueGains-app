@@ -6,6 +6,7 @@ import com.gym.v2.auth.entity.CoachEntity;
 import com.gym.v2.auth.entity.UserRole;
 import com.gym.v2.auth.repository.*;
 import com.gym.v2.core.exception.BadRequestException;
+import com.gym.v2.core.exception.ConflictException;
 import com.gym.v2.core.exception.NotFoundException;
 import com.gym.v2.core.security.service.UserContextService;
 import com.gym.v2.social.dto.*;
@@ -175,7 +176,7 @@ public class PairingService {
 		pairingRequestRepository
 			.findByClient_UserIdAndCoach_UserIdAndStatus(client.getUserId(), coach.getUserId(), PairingStatus.PENDING)
 			.ifPresent(req -> {
-				throw new BadRequestException("Bu antrenöre zaten bekleyen bir isteğiniz bulunuyor.");
+				throw new ConflictException("Bu antrenöre zaten bekleyen bir isteğiniz bulunuyor.");
 			});
 
 		PairingRequest pairingRequest = new PairingRequest();

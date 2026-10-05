@@ -8,13 +8,16 @@ import org.springframework.http.MediaType;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 class AuthorizationMatrixIT extends IntegrationTestBase {
 
 	@Test
-	void getSharedMeasurements_noAuthHeader_returnsForbidden() throws Exception {
-		mockMvc.perform(get("/api/v1/coaches/measurements/shared")).andExpect(status().isForbidden());
+	void getSharedMeasurements_noAuthHeader_returnsUnauthorized() throws Exception {
+		mockMvc.perform(get("/api/v1/coaches/measurements/shared"))
+			.andExpect(status().isUnauthorized())
+			.andExpect(jsonPath("$.message").value("Bu işlem için oturum açmanız gerekiyor."));
 	}
 
 	@Test
@@ -45,11 +48,11 @@ class AuthorizationMatrixIT extends IntegrationTestBase {
 	 * ücretli paket açabilir.
 	 */
 	@Test
-	void paymentWebhook_noAuthHeader_returnsForbidden() throws Exception {
+	void paymentWebhook_noAuthHeader_returnsUnauthorized() throws Exception {
 		mockMvc
 			.perform(post("/api/v1/webhooks/payment").contentType(MediaType.APPLICATION_JSON)
 				.content("{\"sessionId\":\"mock_sess_deneme\",\"status\":\"SUCCESS\"}"))
-			.andExpect(status().isForbidden());
+			.andExpect(status().isUnauthorized());
 	}
 
 	/**
@@ -57,8 +60,8 @@ class AuthorizationMatrixIT extends IntegrationTestBase {
 	 * korumanın bir anlamı kalmaz.
 	 */
 	@Test
-	void mockGateway_noAuthHeader_returnsForbidden() throws Exception {
-		mockMvc.perform(post("/api/v1/mock-gateway/pay/mock_sess_deneme/SUCCESS")).andExpect(status().isForbidden());
+	void mockGateway_noAuthHeader_returnsUnauthorized() throws Exception {
+		mockMvc.perform(post("/api/v1/mock-gateway/pay/mock_sess_deneme/SUCCESS")).andExpect(status().isUnauthorized());
 	}
 
 	@Test

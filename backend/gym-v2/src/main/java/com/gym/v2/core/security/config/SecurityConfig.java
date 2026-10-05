@@ -47,9 +47,13 @@ public class SecurityConfig {
 
 	private final SecurityFilter securityFilter;
 
-	public SecurityConfig(JwtAuthenticationFilter jwtAuthFilter, SecurityFilter securityFilter) {
+	private final JsonAuthenticationEntryPoint authenticationEntryPoint;
+
+	public SecurityConfig(JwtAuthenticationFilter jwtAuthFilter, SecurityFilter securityFilter,
+			JsonAuthenticationEntryPoint authenticationEntryPoint) {
 		this.jwtAuthFilter = jwtAuthFilter;
 		this.securityFilter = securityFilter;
+		this.authenticationEntryPoint = authenticationEntryPoint;
 	}
 
 	/**
@@ -129,6 +133,7 @@ public class SecurityConfig {
 				.contentSecurityPolicy(
 						csp -> csp.policyDirectives("default-src 'self'; script-src 'self'; object-src 'none';"))
 				.httpStrictTransportSecurity(hsts -> hsts.includeSubDomains(true).maxAgeInSeconds(31536000)))
+			.exceptionHandling(ex -> ex.authenticationEntryPoint(authenticationEntryPoint))
 			.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 			.addFilterBefore(securityFilter, UsernamePasswordAuthenticationFilter.class)
 			.addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);

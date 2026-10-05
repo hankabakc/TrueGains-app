@@ -115,4 +115,41 @@ void main() {
     expect(result.success, isFalse);
     expect(result.message, 'Bu kayıt size ait değil!');
   });
+
+  test('handleError 409 durumunda sunucu mesajını, veri yoksa sabit metni döner', () {
+    final dio = Dio();
+    final apiService = DietApiService(FakeDioClient(dio));
+    final options = RequestOptions(path: '/nutrition/test');
+
+    final withServerMessage = DioException(
+      requestOptions: options,
+      type: DioExceptionType.badResponse,
+      response: Response<Map<String, dynamic>>(
+        requestOptions: options,
+        statusCode: 409,
+        data: <String, dynamic>{
+          'success': false,
+          'message': 'Bu antrenörü zaten değerlendirdiniz.',
+        },
+      ),
+    );
+    expect(
+      apiService.handleError<void>(withServerMessage).message,
+      'Bu antrenörü zaten değerlendirdiniz.',
+    );
+
+    final withoutData = DioException(
+      requestOptions: options,
+      type: DioExceptionType.badResponse,
+      response: Response<dynamic>(
+        requestOptions: options,
+        statusCode: 409,
+        data: null,
+      ),
+    );
+    expect(
+      apiService.handleError<void>(withoutData).message,
+      'Eş zamanlı güncelleme çakışması: Veri başka bir yerde güncellenmiş. Lütfen sayfayı yenileyip tekrar deneyin.',
+    );
+  });
 }

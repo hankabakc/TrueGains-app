@@ -5,6 +5,7 @@ import com.gym.v2.auth.entity.ClientEntity;
 import com.gym.v2.auth.entity.UserRole;
 import com.gym.v2.auth.repository.ClientRepository;
 import com.gym.v2.core.exception.BadRequestException;
+import com.gym.v2.core.exception.ConflictException;
 import com.gym.v2.core.exception.NotFoundException;
 import com.gym.v2.core.security.EncryptionConverter;
 import com.gym.v2.core.security.service.UserContextService;
@@ -213,7 +214,7 @@ class MeasurementOwnershipTest {
 			.thenReturn(List.of(measurementOf(5L, owner, false), measurementOf(6L, owner, true)));
 
 		assertThatThrownBy(() -> service.shareMeasurementsWithCoach(List.of(5L, 6L)))
-			.isInstanceOf(BadRequestException.class);
+			.isInstanceOf(ConflictException.class);
 
 		verify(measurementRepository, never()).bulkShareWithCoach(any(), any());
 	}

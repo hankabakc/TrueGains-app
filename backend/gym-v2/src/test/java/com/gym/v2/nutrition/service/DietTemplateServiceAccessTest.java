@@ -4,6 +4,7 @@ import com.gym.v2.auth.entity.AppUser;
 import com.gym.v2.auth.entity.ClientEntity;
 import com.gym.v2.auth.entity.UserRole;
 import com.gym.v2.auth.repository.ClientRepository;
+import com.gym.v2.core.exception.ConflictException;
 import com.gym.v2.core.exception.NotFoundException;
 import com.gym.v2.core.security.service.AuditLogService;
 import com.gym.v2.core.security.service.UserContextService;
@@ -158,6 +159,29 @@ class DietTemplateServiceAccessTest {
 
 		assertThatThrownBy(() -> service.getClientAssignmentForCoach(1L)).isInstanceOf(NotFoundException.class)
 			.hasMessage("Öğrenci bulunamadı: 1");
+
+		verify(programRepository, never()).save(any());
+	}
+
+	@Test
+	void assignSameTemplateTwice_isConflictAndSavesNothing() {
+		currentUserIs(coach);
+
+		DietProgram ownTemplate = new DietProgram();
+		ownTemplate.setId(20L);
+		ownTemplate.setOwner(coach);
+		ownTemplate.setTemplate(true);
+		when(programRepository.findById(20L)).thenReturn(Optional.of(ownTemplate));
+
+		ClientEntity ownClient = new ClientEntity();
+		ownClient.setCoachId(coach.getId());
+		ownClient.setUser(client);
+		when(clientRepository.findByUserId(1L)).thenReturn(Optional.of(ownClient));
+
+		when(programRepository.existsByOwnerIdAndOriginalTemplateId(client.getId(), 20L)).thenReturn(true);
+
+		assertThatThrownBy(() -> service.assignTemplateToClient(20L, 1L)).isInstanceOf(ConflictException.class)
+			.hasMessage("Bu şablon daha önce bu öğrenciye atanmış!");
 
 		verify(programRepository, never()).save(any());
 	}

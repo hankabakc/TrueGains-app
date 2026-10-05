@@ -4,7 +4,7 @@ import com.gym.v2.auth.entity.ClientEntity;
 import com.gym.v2.auth.entity.CoachEntity;
 import com.gym.v2.auth.repository.ClientRepository;
 import com.gym.v2.auth.repository.CoachRepository;
-import com.gym.v2.core.exception.BadRequestException;
+import com.gym.v2.core.exception.ConflictException;
 import com.gym.v2.core.exception.NotFoundException;
 import com.gym.v2.social.entity.PairingRequest;
 import com.gym.v2.social.entity.PairingStatus;
@@ -64,12 +64,12 @@ public class CoachRequestService {
 		boolean hasPendingRequest = pairingRequestRepository.existsByClient_UserIdAndCoach_UserIdAndStatus(clientId,
 				coachId, PairingStatus.PENDING);
 		if (hasPendingRequest) {
-			throw new BadRequestException("Bu antrenöre zaten beklemede olan bir isteğiniz bulunuyor.");
+			throw new ConflictException("Bu antrenöre zaten beklemede olan bir isteğiniz bulunuyor.");
 		}
 
 		// Zaten bağlı mı kontrolü
 		if (Objects.equals(client.getCoachId(), coachId)) {
-			throw new BadRequestException("Bu antrenör ile zaten çalışıyorsunuz.");
+			throw new ConflictException("Bu antrenör ile zaten çalışıyorsunuz.");
 		}
 
 		// 2. İstek oluşturma

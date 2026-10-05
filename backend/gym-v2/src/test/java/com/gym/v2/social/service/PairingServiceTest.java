@@ -7,6 +7,7 @@ import com.gym.v2.auth.entity.UserRole;
 import com.gym.v2.auth.repository.AppUserRepository;
 import com.gym.v2.auth.repository.ClientRepository;
 import com.gym.v2.auth.repository.CoachRepository;
+import com.gym.v2.core.exception.ConflictException;
 import com.gym.v2.core.exception.NotFoundException;
 import com.gym.v2.core.security.EncryptionConverter;
 import com.gym.v2.core.security.service.UserContextService;
@@ -37,6 +38,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -217,6 +220,29 @@ class PairingServiceTest {
 
 		assertThatThrownBy(() -> service.getMyActiveClients()).isInstanceOf(AccessDeniedException.class)
 			.hasMessage("Bu işlemi sadece antrenörler yapabilir.");
+	}
+
+	@Test
+	void sendPairingRequest_duplicatePending_isConflict() {
+		AppUser clientUser = userWithId(1L, "sporcu@test.com");
+		when(userContextService.getCurrentUser()).thenReturn(clientUser);
+
+		ClientEntity client = new ClientEntity();
+		client.setUserId(1L);
+		when(clientRepository.findByUserId(1L)).thenReturn(Optional.of(client));
+
+		CoachEntity coach = new CoachEntity();
+		coach.setUserId(2L);
+		when(coachRepository.findByUserId(2L)).thenReturn(Optional.of(coach));
+
+		when(pairingRequestRepository.findByClient_UserIdAndCoach_UserIdAndStatus(1L, 2L, PairingStatus.PENDING))
+			.thenReturn(Optional.of(new PairingRequest()));
+
+		assertThatThrownBy(() -> service.sendPairingRequest(new CreatePairingRequest(2L, "tekrar istek")))
+			.isInstanceOf(ConflictException.class)
+			.hasMessage("Bu antrenöre zaten bekleyen bir isteğiniz bulunuyor.");
+
+		verify(pairingRequestRepository, never()).save(any());
 	}
 
 }

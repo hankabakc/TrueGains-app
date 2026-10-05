@@ -11,12 +11,12 @@ String friendlyError(Object? error) {
     if (error.response == null) {
       return 'Sunucuya bağlanılamadı. Lütfen internet bağlantınızı kontrol edin.';
     }
-    if (error.response?.statusCode == 409) {
-      return 'Bu kayıt başka bir yerde güncellendi. Lütfen sayfayı yenileyip tekrar deneyin.';
-    }
     final data = error.response?.data;
     if (data is Map && data['message'] is String) {
       return data['message'] as String;
+    }
+    if (error.response?.statusCode == 409) {
+      return 'Bu kayıt başka bir yerde güncellendi. Lütfen sayfayı yenileyip tekrar deneyin.';
     }
     return 'İşlem tamamlanamadı. Lütfen tekrar deneyin.';
   }

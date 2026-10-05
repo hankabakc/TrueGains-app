@@ -4,6 +4,7 @@ import com.gym.v2.auth.entity.AppUser;
 import com.gym.v2.auth.entity.ClientEntity;
 import com.gym.v2.auth.repository.ClientRepository;
 import com.gym.v2.core.exception.BadRequestException;
+import com.gym.v2.core.exception.ConflictException;
 import com.gym.v2.core.exception.NotFoundException;
 import com.gym.v2.core.security.EncryptionConverter;
 import com.gym.v2.core.security.service.UserContextService;
@@ -173,7 +174,7 @@ public class MeasurementService {
 			}
 			// Zaten paylaşıldıysa hata fırlatılır
 			if (Boolean.TRUE.equals(measurement.getIsSharedWithCoach())) {
-				throw new BadRequestException("Seçili ölçümlerden bazıları zaten antrenörünüzle paylaşılmış.");
+				throw new ConflictException("Seçili ölçümlerden bazıları zaten antrenörünüzle paylaşılmış.");
 			}
 		}
 

@@ -243,14 +243,16 @@ class AuthApiService {
 
   ApiResponse<AuthModel> _handleError(DioException e) {
     String message = 'Sunucuya bağlanılamadı';
+    final dynamic data = e.response?.data;
 
-    if (e.response?.statusCode == 409) {
+    if (data is Map<String, dynamic> && data['message'] is String) {
+      message = data['message'] as String;
+    } else if (e.response?.statusCode == 409) {
       message =
           'Eş zamanlı güncelleme çakışması: Veri başka bir yerde güncellenmiş. Lütfen sayfayı yenileyip tekrar deneyin.';
-    } else if (e.response?.data != null) {
-      final dynamic data = e.response!.data;
+    } else if (data != null) {
       if (data is Map<String, dynamic>) {
-        message = (data['message'] as String?) ?? 'İşlem başarısız';
+        message = 'İşlem başarısız';
       } else if (data is String && data.contains('<!doctype html>')) {
         message = 'Sunucu içi hata oluştu (Geçersiz İstek)';
       } else {

@@ -215,15 +215,15 @@ class MeasurementRepository {
   }
 
   void _handleError(DioException e) {
+    final data = e.response?.data;
+    if (data is Map<String, dynamic> && data['message'] is String) {
+      throw Exception(data['message'] as String);
+    }
     if (e.response?.statusCode == 409) {
       throw Exception(
         'Eş zamanlı güncelleme çakışması: Veri başka bir yerde güncellenmiş. Lütfen sayfayı yenileyip tekrar deneyin.',
       );
     }
-    final message =
-        e.response?.data is Map<String, dynamic>
-            ? (e.response!.data as Map<String, dynamic>)['message'] as String?
-            : null;
-    throw Exception(message ?? 'Ölçüm işlemi sırasında hata oluştu.');
+    throw Exception('Ölçüm işlemi sırasında hata oluştu.');
   }
 }
