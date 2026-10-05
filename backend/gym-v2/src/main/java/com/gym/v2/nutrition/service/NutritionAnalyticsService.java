@@ -71,7 +71,7 @@ public class NutritionAnalyticsService {
 				.orElseThrow(() -> new NotFoundException("Sporcu kaydı bulunamadı."));
 
 			if (!Objects.equals(client.getCoachId(), currentUser.getId())) {
-				throw new AccessDeniedException("Bu sporcunun verilerine erişim yetkiniz yoktur.");
+				throw new NotFoundException("Sporcu kaydı bulunamadı.");
 			}
 
 			user = client.getUser();

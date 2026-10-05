@@ -10,6 +10,8 @@ import com.gym.v2.core.exception.NotFoundException;
 import com.gym.v2.core.security.SecurityUtils;
 import com.gym.v2.core.security.service.AuditLogService;
 import com.gym.v2.core.service.FileStorageService;
+import com.gym.v2.nutrition.entity.DietProgram;
+import com.gym.v2.training.entity.TrainingBlock;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import java.time.Clock;
@@ -152,14 +154,12 @@ public class AccountDeletionService {
 		// 2) Ağaç kökleri: varlık üzerinden sil ki alt koleksiyonlar da gitsin.
 		entityManager
 			.createQuery("SELECT b FROM TrainingBlock b WHERE b.client.id = :id OR b.coach.id = :id",
-					com.gym.v2.training.entity.TrainingBlock.class)
+					TrainingBlock.class)
 			.setParameter("id", userId)
 			.getResultList()
 			.forEach(entityManager::remove);
 
-		entityManager
-			.createQuery("SELECT p FROM DietProgram p WHERE p.owner.id = :id",
-					com.gym.v2.nutrition.entity.DietProgram.class)
+		entityManager.createQuery("SELECT p FROM DietProgram p WHERE p.owner.id = :id", DietProgram.class)
 			.setParameter("id", userId)
 			.getResultList()
 			.forEach(entityManager::remove);

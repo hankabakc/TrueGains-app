@@ -45,6 +45,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -188,13 +189,14 @@ class FinanceServiceTest {
 	}
 
 	@Test
-	void removeFromCart_transactionBelongsToOtherUser_throwsSecurityExceptionAndDoesNotDelete() {
+	void removeFromCart_transactionBelongsToOtherUser_throwsNotFoundAndDoesNotDelete() {
 		AppUser owner = createUser(2L, "owner@test.com");
 		PaymentTransaction tx = new PaymentTransaction(100L, owner, new BigDecimal("100.00"), "PENDING", Instant.now());
 
 		when(paymentTransactionRepository.findById(100L)).thenReturn(Optional.of(tx));
 
-		assertThatThrownBy(() -> financeService.removeFromCart(1L, 100L)).isInstanceOf(SecurityException.class);
+		assertThatThrownBy(() -> financeService.removeFromCart(1L, 100L)).isInstanceOf(NotFoundException.class)
+			.hasMessage("İşlem bulunamadı.");
 
 		verify(paymentTransactionRepository, never()).delete(any());
 	}
@@ -250,14 +252,15 @@ class FinanceServiceTest {
 	}
 
 	@Test
-	void processPayment_transactionBelongsToAnotherClient_throwsSecurityExceptionAndDoesNotCharge() {
+	void processPayment_transactionBelongsToAnotherClient_throwsNotFoundAndDoesNotCharge() {
 		AppUser owner = createUser(2L, "owner@test.com");
 		PaymentTransaction tx = new PaymentTransaction(100L, owner, activePackage(), new BigDecimal("150.00"),
 				"PENDING", Instant.now());
 		when(paymentTransactionRepository.findById(100L)).thenReturn(Optional.of(tx));
 
 		assertThatThrownBy(() -> financeService.processPaymentForTransaction(1L, 100L, cardRequest("1234567890123456")))
-			.isInstanceOf(SecurityException.class);
+			.isInstanceOf(NotFoundException.class)
+			.hasMessage("İşlem bulunamadı.");
 
 		verify(paymentTransactionRepository, never()).save(any());
 		verify(clientSubscriptionRepository, never()).save(any());
@@ -381,12 +384,13 @@ class FinanceServiceTest {
 	}
 
 	@Test
-	void updatePackage_packageOfAnotherCoach_throwsSecurityExceptionAndDoesNotSave() {
+	void updatePackage_packageOfAnotherCoach_throwsNotFoundAndDoesNotSave() {
 		when(subscriptionPackageRepository.findById(10L)).thenReturn(Optional.of(packageOfCoachOne()));
 
 		// Koç 2, koç 1'in paketini güncellemeye çalışıyor.
 		assertThatThrownBy(() -> financeService.updatePackage(2L, 10L, packageDto("Ele geçirildi", "1.00")))
-			.isInstanceOf(SecurityException.class);
+			.isInstanceOf(NotFoundException.class)
+			.hasMessage("Paket bulunamadı.");
 
 		verify(subscriptionPackageRepository, never()).save(any());
 	}
@@ -404,10 +408,11 @@ class FinanceServiceTest {
 	}
 
 	@Test
-	void deletePackage_packageOfAnotherCoach_throwsSecurityExceptionAndDoesNotSave() {
+	void deletePackage_packageOfAnotherCoach_throwsNotFoundAndDoesNotSave() {
 		when(subscriptionPackageRepository.findById(10L)).thenReturn(Optional.of(packageOfCoachOne()));
 
-		assertThatThrownBy(() -> financeService.deletePackage(2L, 10L)).isInstanceOf(SecurityException.class);
+		assertThatThrownBy(() -> financeService.deletePackage(2L, 10L)).isInstanceOf(NotFoundException.class)
+			.hasMessage("Paket bulunamadı.");
 
 		verify(subscriptionPackageRepository, never()).save(any());
 	}
@@ -444,12 +449,13 @@ class FinanceServiceTest {
 	// ---------------------------------------------------------------------------
 
 	@Test
-	void getClientSubscription_clientOfAnotherCoach_throwsSecurityException() {
+	void getClientSubscription_clientOfAnotherCoach_throwsNotFound() {
 		ClientEntity client = new ClientEntity();
 		client.setCoachId(1L);
 		when(clientRepository.findByUserId(50L)).thenReturn(Optional.of(client));
 
-		assertThatThrownBy(() -> financeService.getClientSubscription(2L, 50L)).isInstanceOf(SecurityException.class);
+		assertThatThrownBy(() -> financeService.getClientSubscription(2L, 50L)).isInstanceOf(NotFoundException.class)
+			.hasMessage("Sporcu profili bulunamadı.");
 	}
 
 	@Test
@@ -665,6 +671,22 @@ class FinanceServiceTest {
 
 		verify(clientSubscriptionRepository, never()).save(any());
 		verify(appUserRepository, never()).save(any());
+	}
+
+	@Test
+	void checkoutAndIntent_ofAnotherClientsTransaction_isNotFound() {
+		AppUser clientTwo = createUser(2L, "client2@test.com");
+		PaymentTransaction tx = new PaymentTransaction(200L, clientTwo, activePackage(), new BigDecimal("150.00"),
+				"PENDING", Instant.now());
+		when(paymentTransactionRepository.findById(200L)).thenReturn(Optional.of(tx));
+
+		assertThatThrownBy(() -> financeService.initiateCheckout(1L, 200L)).isInstanceOf(NotFoundException.class)
+			.hasMessage("İşlem bulunamadı.");
+
+		assertThatThrownBy(() -> financeService.getPurchaseIntent(1L, 200L)).isInstanceOf(NotFoundException.class)
+			.hasMessage("İşlem bulunamadı.");
+
+		verifyNoInteractions(paymentGatewayService);
 	}
 
 }

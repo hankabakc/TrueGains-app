@@ -53,11 +53,9 @@ public class MeasurementController {
 	@PreAuthorize("hasRole('CLIENT')")
 	@Operation(summary = "Ölçüm geçmişini getir",
 			description = "Oturum açmış kullanıcının tüm kayıtlarını sayfalama ile döner.")
-	public ApiResponse<com.gym.v2.core.response.PageResponse<MeasurementDTO>> getMyMeasurements(
-			@ParameterObject Pageable pageable) {
+	public ApiResponse<PageResponse<MeasurementDTO>> getMyMeasurements(@ParameterObject Pageable pageable) {
 		Page<MeasurementDTO> response = measurementService.getMyMeasurements(pageable);
-		return ApiResponse.success(com.gym.v2.core.response.PageResponse.from(response), "Ölçüm geçmişi listelendi.",
-				clock.instant());
+		return ApiResponse.success(PageResponse.from(response), "Ölçüm geçmişi listelendi.", clock.instant());
 	}
 
 	/**

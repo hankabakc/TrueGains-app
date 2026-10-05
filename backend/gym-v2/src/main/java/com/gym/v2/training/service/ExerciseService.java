@@ -1,10 +1,12 @@
 package com.gym.v2.training.service;
 
 import com.gym.v2.training.dto.ExerciseDTO;
+import com.gym.v2.training.entity.Exercise;
 import com.gym.v2.training.repository.ExerciseRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -24,8 +26,7 @@ public class ExerciseService {
 
 	@Transactional(readOnly = true)
 	public List<ExerciseDTO> getAllExercises() {
-		java.util.List<com.gym.v2.training.entity.Exercise> exercises = new java.util.ArrayList<>(
-				exerciseRepository.findAll());
+		List<Exercise> exercises = new ArrayList<>(exerciseRepository.findAll());
 		exercises.sort((a, b) -> {
 			int groupComparison = a.getMuscleGroup().compareTo(b.getMuscleGroup());
 			if (groupComparison != 0) {

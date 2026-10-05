@@ -85,14 +85,14 @@ class FinanceControllerTest {
 	}
 
 	@Test
-	void removeFromCart_transactionBelongsToOtherUser_returnsForbidden() throws Exception {
+	void removeFromCart_transactionBelongsToOtherUser_returnsNotFound() throws Exception {
 		when(financeService.getCurrentUser()).thenReturn(mockUser);
-		doThrow(new SecurityException("Bu işlem size ait değildir.")).when(financeService).removeFromCart(1L, 100L);
+		doThrow(new NotFoundException("İşlem bulunamadı.")).when(financeService).removeFromCart(1L, 100L);
 
 		mockMvc.perform(delete("/api/v1/finance/cart/cancel/100").contentType(MediaType.APPLICATION_JSON))
-			.andExpect(status().isForbidden())
+			.andExpect(status().isNotFound())
 			.andExpect(jsonPath("$.success").value(false))
-			.andExpect(jsonPath("$.message").value("Bu işlem size ait değildir."));
+			.andExpect(jsonPath("$.message").value("İşlem bulunamadı."));
 	}
 
 }

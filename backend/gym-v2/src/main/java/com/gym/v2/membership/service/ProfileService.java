@@ -10,7 +10,6 @@ import com.gym.v2.core.security.EncryptionConverter;
 import com.gym.v2.membership.dto.*;
 import com.gym.v2.core.exception.BadRequestException;
 import com.gym.v2.core.exception.NotFoundException;
-import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -197,7 +196,7 @@ public class ProfileService {
 		// e-posta, doğum tarihi ve vücut ölçüleri gibi şifresi çözülmüş kişisel veri
 		// içerir; yalnızca sporcunun kendi antrenörü görebilir.
 		if (client.getCoachId() == null || !client.getCoachId().equals(coachUser.getId())) {
-			throw new AccessDeniedException("Bu sporcunun profiline erişim yetkiniz yoktur.");
+			throw new NotFoundException("Sporcu profili bulunamadı. ID: " + clientId);
 		}
 
 		// Şifreli veri alanları çözülerek (decrypted) DTO yapısıyla geri döndürülür.

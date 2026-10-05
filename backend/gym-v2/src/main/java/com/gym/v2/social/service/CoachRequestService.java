@@ -11,6 +11,7 @@ import com.gym.v2.social.entity.PairingStatus;
 import com.gym.v2.social.repository.PairingRequestRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
@@ -54,7 +55,7 @@ public class CoachRequestService {
 
 		// 1. Validasyonlar
 		ClientEntity client = clientRepository.findByUserId(clientId)
-			.orElseThrow(() -> new BadRequestException("Sadece sporcular koçluk isteği gönderebilir."));
+			.orElseThrow(() -> new AccessDeniedException("Sadece sporcular koçluk isteği gönderebilir."));
 
 		CoachEntity coach = coachRepository.findByUserId(coachId)
 			.orElseThrow(() -> new NotFoundException("Hedef antrenör bulunamadı."));

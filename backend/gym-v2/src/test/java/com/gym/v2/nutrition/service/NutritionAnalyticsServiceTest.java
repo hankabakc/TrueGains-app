@@ -129,7 +129,8 @@ class NutritionAnalyticsServiceTest {
 		// Sporcu başka bir koça (7) bağlı.
 		when(clientRepository.findByUserId(50L)).thenReturn(Optional.of(clientLinkedTo(7L)));
 
-		assertThatThrownBy(() -> service.getDashboardData(null, 50L)).isInstanceOf(AccessDeniedException.class);
+		assertThatThrownBy(() -> service.getDashboardData(null, 50L)).isInstanceOf(NotFoundException.class)
+			.hasMessage("Sporcu kaydı bulunamadı.");
 
 		verify(mealEntryRepository, never()).findDailyNutrientTotals(any(), any(), any());
 	}

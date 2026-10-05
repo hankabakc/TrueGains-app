@@ -140,7 +140,8 @@ class ChatServiceTest {
 		currentUserIs(outsider);
 		when(conversationRepository.findById(10L)).thenReturn(Optional.of(conversation()));
 
-		assertThatThrownBy(() -> service.getMessages(10L, PAGE)).isInstanceOf(BadRequestException.class);
+		assertThatThrownBy(() -> service.getMessages(10L, PAGE)).isInstanceOf(NotFoundException.class)
+			.hasMessage("Konuşma bulunamadı.");
 
 		// Yabancı kullanıcı hiçbir mesaj satırına ulaşamamalı.
 		verify(messageRepository, never()).findVisibleMessages(any(), any(), any());
@@ -183,7 +184,8 @@ class ChatServiceTest {
 		currentUserIs(outsider);
 		when(conversationRepository.findById(10L)).thenReturn(Optional.of(conversation()));
 
-		assertThatThrownBy(() -> service.markAsRead(10L)).isInstanceOf(BadRequestException.class);
+		assertThatThrownBy(() -> service.markAsRead(10L)).isInstanceOf(NotFoundException.class)
+			.hasMessage("Konuşma bulunamadı.");
 	}
 
 	// ---------------------------------------------------------------------------
@@ -196,7 +198,8 @@ class ChatServiceTest {
 		when(conversationRepository.findByIdWithUsers(10L)).thenReturn(Optional.of(conversation()));
 
 		assertThatThrownBy(() -> service.sendMessage(new SendMessageRequest(10L, "merhaba", null, null, null)))
-			.isInstanceOf(BadRequestException.class);
+			.isInstanceOf(NotFoundException.class)
+			.hasMessage("Konuşma bulunamadı.");
 
 		verify(messageRepository, never()).save(any());
 	}
@@ -283,7 +286,8 @@ class ChatServiceTest {
 		when(conversationRepository.findByIdWithUsers(10L)).thenReturn(Optional.of(conversation()));
 
 		assertThatThrownBy(() -> service.sendMessage(new SendMessageRequest(10L, "merhaba", null, null, "yerel-1")))
-			.isInstanceOf(BadRequestException.class);
+			.isInstanceOf(NotFoundException.class)
+			.hasMessage("Konuşma bulunamadı.");
 
 		verify(messageRepository, never()).findBySenderIdAndLocalId(any(), any());
 	}

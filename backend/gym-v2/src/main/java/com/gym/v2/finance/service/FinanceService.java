@@ -9,10 +9,13 @@ import com.gym.v2.core.exception.BadRequestException;
 import com.gym.v2.core.exception.NotFoundException;
 import com.gym.v2.core.security.SecurityUtils;
 import com.gym.v2.core.security.EncryptionConverter;
+import com.gym.v2.finance.dto.CheckoutSessionResponse;
 import com.gym.v2.finance.dto.ClientSubscriptionDTO;
+import com.gym.v2.finance.dto.CoachDashboardStatsDTO;
 import com.gym.v2.finance.dto.PaymentRequestDTO;
-import com.gym.v2.finance.dto.SubscriptionPackageDTO;
+import com.gym.v2.finance.dto.PaymentTransactionDTO;
 import com.gym.v2.finance.dto.PurchaseIntentDTO;
+import com.gym.v2.finance.dto.SubscriptionPackageDTO;
 import com.gym.v2.finance.entity.ClientSubscription;
 import com.gym.v2.finance.entity.PaymentTransaction;
 import com.gym.v2.finance.entity.SubscriptionPackage;
@@ -25,6 +28,7 @@ import com.gym.v2.finance.repository.OrderRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
@@ -59,7 +63,7 @@ public class FinanceService {
 
 	private final FinanceMapper financeMapper;
 
-	private final java.time.Clock clock;
+	private final Clock clock;
 
 	// Constructor Injection (Pure Java, Lombok YASAK)
 	public FinanceService(SubscriptionPackageRepository subscriptionPackageRepository,
@@ -67,7 +71,7 @@ public class FinanceService {
 			PaymentTransactionRepository paymentTransactionRepository, AppUserRepository appUserRepository,
 			ClientRepository clientRepository, CoachRepository coachRepository, OrderRepository orderRepository,
 			PaymentGatewayService paymentGatewayService, EncryptionConverter encryptionConverter,
-			FinanceMapper financeMapper, java.time.Clock clock) {
+			FinanceMapper financeMapper, Clock clock) {
 		this.subscriptionPackageRepository = subscriptionPackageRepository;
 		this.clientSubscriptionRepository = clientSubscriptionRepository;
 		this.paymentTransactionRepository = paymentTransactionRepository;
@@ -82,11 +86,11 @@ public class FinanceService {
 	}
 
 	@Transactional
-	public com.gym.v2.finance.dto.CheckoutSessionResponse initiateCheckout(Long clientId, Long transactionId) {
+	public CheckoutSessionResponse initiateCheckout(Long clientId, Long transactionId) {
 		PaymentTransaction tx = paymentTransactionRepository.findById(transactionId)
 			.orElseThrow(() -> new NotFoundException("İşlem bulunamadı."));
 		if (!tx.getClient().getId().equals(clientId)) {
-			throw new SecurityException("Bu işlem size ait değildir.");
+			throw new NotFoundException("İşlem bulunamadı.");
 		}
 		if (!tx.getStatus().equals("PENDING")) {
 			throw new BadRequestException("Bu işlem zaten tamamlanmış.");
@@ -101,8 +105,7 @@ public class FinanceService {
 
 		order = orderRepository.save(order);
 
-		com.gym.v2.finance.dto.CheckoutSessionResponse sessionResponse = paymentGatewayService
-			.createCheckoutSession(order);
+		CheckoutSessionResponse sessionResponse = paymentGatewayService.createCheckoutSession(order);
 		order.setCheckoutSessionId(sessionResponse.checkoutSessionId());
 		orderRepository.save(order);
 
@@ -181,7 +184,7 @@ public class FinanceService {
 			.orElseThrow(() -> new NotFoundException("Sporcu profili bulunamadı."));
 
 		if (!coachId.equals(client.getCoachId())) {
-			throw new SecurityException("Bu sporcunun abonelik bilgilerine erişim yetkiniz yoktur.");
+			throw new NotFoundException("Sporcu profili bulunamadı.");
 		}
 
 		return clientSubscriptionRepository.findActiveSubscriptionByClientId(clientId)
@@ -239,7 +242,7 @@ public class FinanceService {
 
 		// IDOR Korunumu
 		if (!tx.getClient().getId().equals(clientId)) {
-			throw new SecurityException("Bu işlem size ait değildir.");
+			throw new NotFoundException("İşlem bulunamadı.");
 		}
 
 		SubscriptionPackage pkg = tx.getPkg();
@@ -317,7 +320,7 @@ public class FinanceService {
 		SubscriptionPackage pkg = subscriptionPackageRepository.findById(packageId)
 			.orElseThrow(() -> new NotFoundException("Paket bulunamadı."));
 		if (!pkg.getCoachId().equals(coachId)) {
-			throw new SecurityException("Bu paketi güncelleme yetkiniz yoktur.");
+			throw new NotFoundException("Paket bulunamadı.");
 		}
 		pkg.setName(dto.name());
 		pkg.setPrice(dto.price());
@@ -336,14 +339,14 @@ public class FinanceService {
 		SubscriptionPackage pkg = subscriptionPackageRepository.findById(packageId)
 			.orElseThrow(() -> new NotFoundException("Paket bulunamadı."));
 		if (!pkg.getCoachId().equals(coachId)) {
-			throw new SecurityException("Bu paketi silme yetkiniz yoktur.");
+			throw new NotFoundException("Paket bulunamadı.");
 		}
 		pkg.setIsActive(false);
 		subscriptionPackageRepository.save(pkg);
 	}
 
 	@Transactional
-	public com.gym.v2.finance.dto.PaymentTransactionDTO addToCart(Long clientId, Long packageId) {
+	public PaymentTransactionDTO addToCart(Long clientId, Long packageId) {
 		AppUser clientUser = appUserRepository.findById(clientId)
 			.orElseThrow(() -> new NotFoundException("Kullanıcı bulunamadı."));
 		SubscriptionPackage pkg = subscriptionPackageRepository.findById(packageId)
@@ -379,7 +382,7 @@ public class FinanceService {
 		PaymentTransaction tx = paymentTransactionRepository.findById(transactionId)
 			.orElseThrow(() -> new NotFoundException("İşlem bulunamadı."));
 		if (!tx.getClient().getId().equals(clientId)) {
-			throw new SecurityException("Bu işlemi sepetinizden kaldırma yetkiniz yoktur.");
+			throw new NotFoundException("İşlem bulunamadı.");
 		}
 		if (!tx.getStatus().equals("PENDING")) {
 			throw new BadRequestException("Sadece ödeme bekleyen işlemler sepetten kaldırılabilir.");
@@ -388,7 +391,7 @@ public class FinanceService {
 	}
 
 	@Transactional(readOnly = true)
-	public List<com.gym.v2.finance.dto.PaymentTransactionDTO> getClientTransactions(Long clientId) {
+	public List<PaymentTransactionDTO> getClientTransactions(Long clientId) {
 		List<PaymentTransaction> transactions = paymentTransactionRepository.findByClientIdWithPkg(clientId);
 		return financeMapper.toTxDTOList(transactions);
 	}
@@ -399,7 +402,7 @@ public class FinanceService {
 		PaymentTransaction tx = paymentTransactionRepository.findById(transactionId)
 			.orElseThrow(() -> new NotFoundException("İşlem bulunamadı."));
 		if (!tx.getClient().getId().equals(clientId)) {
-			throw new SecurityException("Bu işlem size ait değildir.");
+			throw new NotFoundException("İşlem bulunamadı.");
 		}
 		if (!tx.getStatus().equals("PENDING")) {
 			throw new BadRequestException("Bu işlemin ödemesi zaten gerçekleştirilmiş.");
@@ -430,13 +433,12 @@ public class FinanceService {
 	}
 
 	@Transactional(readOnly = true)
-	public com.gym.v2.finance.dto.CoachDashboardStatsDTO getCoachDashboardStats() {
+	public CoachDashboardStatsDTO getCoachDashboardStats() {
 		AppUser coach = getCurrentUser();
 		long activeStudents = clientRepository.countByCoachId(coach.getId());
 		Instant startOfMonth = java.time.YearMonth.now(clock).atDay(1).atStartOfDay(clock.getZone()).toInstant();
 		java.math.BigDecimal earnings = paymentTransactionRepository.sumCoachEarningsSince(coach.getId(), startOfMonth);
-		return new com.gym.v2.finance.dto.CoachDashboardStatsDTO(activeStudents,
-				earnings != null ? earnings : java.math.BigDecimal.ZERO);
+		return new CoachDashboardStatsDTO(activeStudents, earnings != null ? earnings : java.math.BigDecimal.ZERO);
 	}
 
 	@Transactional

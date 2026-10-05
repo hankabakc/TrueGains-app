@@ -1,6 +1,7 @@
 package com.gym.v2.auth.repository;
 
 import com.gym.v2.auth.entity.CoachEntity;
+import com.gym.v2.social.dto.CoachDiscoveryProjection;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -61,7 +62,7 @@ public interface CoachRepository extends JpaRepository<CoachEntity, Long> {
 					+ "GROUP BY c.user_id " + "HAVING (CAST(:minRating AS double precision) IS NULL "
 					+ "OR AVG(r.rating) >= CAST(:minRating AS double precision))" + ") sub",
 			nativeQuery = true)
-	Page<com.gym.v2.social.dto.CoachDiscoveryProjection> searchCoaches(@Param("specialization") String specialization,
+	Page<CoachDiscoveryProjection> searchCoaches(@Param("specialization") String specialization,
 			@Param("minRating") Double minRating, @Param("sort") String sort, Pageable pageable);
 
 }

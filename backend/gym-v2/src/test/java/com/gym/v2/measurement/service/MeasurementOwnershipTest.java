@@ -23,8 +23,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
-import org.springframework.security.access.AccessDeniedException;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -127,7 +127,8 @@ class MeasurementOwnershipTest {
 		currentUserIs(otherClient);
 		when(measurementRepository.findById(5L)).thenReturn(Optional.of(measurement()));
 
-		assertThatThrownBy(() -> service.deleteMeasurement(5L)).isInstanceOf(AccessDeniedException.class);
+		assertThatThrownBy(() -> service.deleteMeasurement(5L)).isInstanceOf(NotFoundException.class)
+			.hasMessage("Ölçüm kaydı bulunamadı.");
 
 		verify(measurementRepository, never()).delete(any());
 	}
@@ -138,7 +139,8 @@ class MeasurementOwnershipTest {
 		currentUserIs(assignedCoach);
 		when(measurementRepository.findById(5L)).thenReturn(Optional.of(measurement()));
 
-		assertThatThrownBy(() -> service.deleteMeasurement(5L)).isInstanceOf(AccessDeniedException.class);
+		assertThatThrownBy(() -> service.deleteMeasurement(5L)).isInstanceOf(NotFoundException.class)
+			.hasMessage("Ölçüm kaydı bulunamadı.");
 
 		verify(measurementRepository, never()).delete(any());
 	}
@@ -183,7 +185,8 @@ class MeasurementOwnershipTest {
 			.thenReturn(List.of(measurementOf(5L, owner, false), measurementOf(6L, otherClient, false)));
 
 		assertThatThrownBy(() -> service.shareMeasurementsWithCoach(List.of(5L, 6L)))
-			.isInstanceOf(AccessDeniedException.class);
+			.isInstanceOf(NotFoundException.class)
+			.hasMessage("Seçilen ölçüm kayıtlarından bazıları bulunamadı.");
 
 		// Kendi kaydı da paylaşılmamalı: liste ya tümüyle geçerlidir ya da hiç.
 		verify(measurementRepository, never()).bulkShareWithCoach(any(), any());
@@ -270,7 +273,8 @@ class MeasurementOwnershipTest {
 		// Sporcu 1, koç 2'ye bağlı; sorgulayan koç 77.
 		when(clientRepository.findByUserId(1L)).thenReturn(Optional.of(clientLinkedTo(2L)));
 
-		assertThatThrownBy(() -> service.getClientMeasurements(1L, pageable)).isInstanceOf(AccessDeniedException.class);
+		assertThatThrownBy(() -> service.getClientMeasurements(1L, pageable)).isInstanceOf(NotFoundException.class)
+			.hasMessage("Sporcu kaydı bulunamadı.");
 
 		verify(measurementRepository, never()).findByUser_IdAndIsSharedWithCoachTrueOrderByCreatedAtDesc(anyLong(),
 				any(Pageable.class));
@@ -281,7 +285,8 @@ class MeasurementOwnershipTest {
 		currentUserIs(otherCoach);
 		when(clientRepository.findByUserId(1L)).thenReturn(Optional.of(clientLinkedTo(null)));
 
-		assertThatThrownBy(() -> service.getClientMeasurements(1L, pageable)).isInstanceOf(AccessDeniedException.class);
+		assertThatThrownBy(() -> service.getClientMeasurements(1L, pageable)).isInstanceOf(NotFoundException.class)
+			.hasMessage("Sporcu kaydı bulunamadı.");
 
 		verify(measurementRepository, never()).findByUser_IdAndIsSharedWithCoachTrueOrderByCreatedAtDesc(anyLong(),
 				any(Pageable.class));

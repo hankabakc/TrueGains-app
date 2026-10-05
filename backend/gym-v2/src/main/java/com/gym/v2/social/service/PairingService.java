@@ -83,13 +83,13 @@ public class PairingService {
 		else {
 			// ponytail: isim araması bellekte (AES isimler DB'de LIKE'lanamıyor); ~10k
 			// koç üstünde blind-index/HMAC'e geç
-			List<com.gym.v2.social.dto.CoachDiscoveryProjection> all = coachRepository
+			List<CoachDiscoveryProjection> all = coachRepository
 				.searchCoaches(normalizedSpec, minRating, normalizedSort, Pageable.unpaged())
 				.getContent();
 
 			String q = name.trim().toLowerCase(java.util.Locale.forLanguageTag("tr"));
 
-			List<com.gym.v2.social.dto.CoachDiscoveryProjection> matched = all.stream()
+			List<CoachDiscoveryProjection> matched = all.stream()
 				.filter(p -> encryptionConverter.convertToEntityAttribute(p.getFullName())
 					.toLowerCase(java.util.Locale.forLanguageTag("tr"))
 					.contains(q))
@@ -99,8 +99,8 @@ public class PairingService {
 			int from = pageable.getPageNumber() * size;
 			int to = Math.min(from + size, matched.size());
 
-			List<com.gym.v2.social.dto.CoachDiscoveryProjection> pageRows = (from >= matched.size())
-					? java.util.List.of() : matched.subList(from, to);
+			List<CoachDiscoveryProjection> pageRows = (from >= matched.size()) ? java.util.List.of()
+					: matched.subList(from, to);
 
 			List<CoachDiscoveryDTO> dtos = pageRows.stream().map(this::mapProjectionToDiscoveryDTO).toList();
 
@@ -167,7 +167,7 @@ public class PairingService {
 		AppUser currentUser = userContextService.getCurrentUser();
 
 		ClientEntity client = clientRepository.findByUserId(currentUser.getId())
-			.orElseThrow(() -> new BadRequestException("Sadece sporcular eşleşme isteği gönderebilir."));
+			.orElseThrow(() -> new AccessDeniedException("Sadece sporcular eşleşme isteği gönderebilir."));
 
 		CoachEntity coach = coachRepository.findByUserId(request.coachId())
 			.orElseThrow(() -> new NotFoundException("Antrenör bulunamadı."));
@@ -205,7 +205,7 @@ public class PairingService {
 			.orElseThrow(() -> new NotFoundException("İstek bulunamadı."));
 
 		if (!Objects.equals(request.getCoach().getUserId(), currentUser.getId())) {
-			throw new AccessDeniedException("Bu işlemi yapmaya yetkiniz yok.");
+			throw new NotFoundException("İstek bulunamadı.");
 		}
 
 		if (accepted) {
@@ -258,7 +258,7 @@ public class PairingService {
 		}
 	}
 
-	private CoachDiscoveryDTO mapProjectionToDiscoveryDTO(com.gym.v2.social.dto.CoachDiscoveryProjection p) {
+	private CoachDiscoveryDTO mapProjectionToDiscoveryDTO(CoachDiscoveryProjection p) {
 		return new CoachDiscoveryDTO(p.getUserId(), encryptionConverter.convertToEntityAttribute(p.getFullName()),
 				encryptionConverter.convertToEntityAttribute(p.getBio()), p.getSpecialization(), p.getCurrency(),
 				p.getProfilePhotoUrl(), p.getInstagramUrl(), p.getAverageRating(), p.getReviewCount(),
@@ -273,7 +273,7 @@ public class PairingService {
 	public List<DiscoveryUserDto> getMyActiveClients() {
 		AppUser currentUser = userContextService.getCurrentUser();
 		if (currentUser.getRole() != UserRole.COACH) {
-			throw new BadRequestException("Bu işlemi sadece antrenörler yapabilir.");
+			throw new AccessDeniedException("Bu işlemi sadece antrenörler yapabilir.");
 		}
 
 		List<ClientEntity> clients = clientRepository.findAllByCoachId(currentUser.getId());

@@ -6,12 +6,13 @@ import com.gym.v2.auth.entity.CoachEntity;
 import com.gym.v2.auth.repository.AppUserRepository;
 import com.gym.v2.auth.repository.ClientRepository;
 import com.gym.v2.auth.repository.CoachRepository;
-import com.gym.v2.core.exception.BadRequestException;
 import com.gym.v2.core.exception.NotFoundException;
 import com.gym.v2.core.security.EncryptionConverter;
 import com.gym.v2.finance.repository.ClientSubscriptionRepository;
+import com.gym.v2.social.dto.AddGalleryItemRequest;
 import com.gym.v2.social.entity.ClientGallery;
 import com.gym.v2.social.entity.CoachGallery;
+import org.springframework.security.access.AccessDeniedException;
 import com.gym.v2.social.repository.ClientGalleryRepository;
 import com.gym.v2.social.repository.CoachGalleryRepository;
 import com.gym.v2.social.repository.CoachReviewRepository;
@@ -125,7 +126,8 @@ class GalleryOwnershipTest {
 	void deleteClientGalleryItem_photoBelongsToAnotherUser_throwsAndDeletesNothing() {
 		when(clientGalleryRepository.findById(5L)).thenReturn(Optional.of(clientGalleryOwnedBy(99L)));
 
-		assertThatThrownBy(() -> clientGalleryService.deleteGalleryItem(5L)).isInstanceOf(BadRequestException.class);
+		assertThatThrownBy(() -> clientGalleryService.deleteGalleryItem(5L)).isInstanceOf(NotFoundException.class)
+			.hasMessage("Galeri öğesi bulunamadı.");
 
 		verify(clientGalleryRepository, never()).delete(any());
 	}
@@ -165,7 +167,8 @@ class GalleryOwnershipTest {
 	void deleteCoachGalleryItem_photoBelongsToAnotherCoach_throwsAndDeletesNothing() {
 		when(coachGalleryRepository.findById(7L)).thenReturn(Optional.of(coachGalleryOwnedBy(99L)));
 
-		assertThatThrownBy(() -> coachProfileService.deleteGalleryItem(7L)).isInstanceOf(BadRequestException.class);
+		assertThatThrownBy(() -> coachProfileService.deleteGalleryItem(7L)).isInstanceOf(NotFoundException.class)
+			.hasMessage("Galeri öğesi bulunamadı.");
 
 		verify(coachGalleryRepository, never()).delete(any());
 	}
@@ -178,6 +181,30 @@ class GalleryOwnershipTest {
 		coachProfileService.deleteGalleryItem(7L);
 
 		verify(coachGalleryRepository).delete(item);
+	}
+
+	@Test
+	void wrongRole_galleryAndReview_isForbiddenAndSavesNothing() {
+		when(clientRepository.findByUserId(1L)).thenReturn(Optional.empty());
+
+		assertThatThrownBy(() -> clientGalleryService.addToGallery("https://resim.jpg"))
+			.isInstanceOf(AccessDeniedException.class)
+			.hasMessage("Sadece sporcular galeriye resim ekleyebilir.");
+
+		assertThatThrownBy(() -> coachProfileService.addReview(2L, 5, "Harika"))
+			.isInstanceOf(AccessDeniedException.class)
+			.hasMessage("Sadece sporcular değerlendirme yapabilir.");
+
+		when(coachRepository.findByUserId(1L)).thenReturn(Optional.empty());
+
+		assertThatThrownBy(
+				() -> coachProfileService.addGalleryItem(new AddGalleryItemRequest("https://resim.jpg", false)))
+			.isInstanceOf(AccessDeniedException.class)
+			.hasMessage("Sadece antrenörler galeriye resim ekleyebilir.");
+
+		verify(clientGalleryRepository, never()).save(any());
+		verify(reviewRepository, never()).save(any());
+		verify(coachGalleryRepository, never()).save(any());
 	}
 
 }

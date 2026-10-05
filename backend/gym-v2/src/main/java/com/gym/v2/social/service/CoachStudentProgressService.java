@@ -6,7 +6,6 @@ import com.gym.v2.auth.entity.CoachEntity;
 import com.gym.v2.auth.repository.AppUserRepository;
 import com.gym.v2.auth.repository.ClientRepository;
 import com.gym.v2.auth.repository.CoachRepository;
-import com.gym.v2.core.exception.BadRequestException;
 import com.gym.v2.core.exception.NotFoundException;
 import com.gym.v2.core.security.SecurityUtils;
 import com.gym.v2.core.util.FileUrls;
@@ -47,14 +46,14 @@ public class CoachStudentProgressService {
 	public CoachStudentProgressDto createProgressRequest(CreateProgressRequest request) {
 		AppUser currentUser = getCurrentUser();
 		CoachEntity coach = coachRepository.findByUserId(currentUser.getId())
-			.orElseThrow(() -> new BadRequestException("Sadece antrenörler gelişim talebi oluşturabilir."));
+			.orElseThrow(() -> new AccessDeniedException("Sadece antrenörler gelişim talebi oluşturabilir."));
 
 		ClientEntity client = clientRepository.findByUserId(request.clientId())
 			.orElseThrow(() -> new NotFoundException("Sporcu bulunamadı."));
 
 		// Güvenlik: Sporcu koçun öğrencisi mi?
 		if (client.getCoachId() == null || !client.getCoachId().equals(coach.getUserId())) {
-			throw new BadRequestException("Sadece kendi öğrencileriniz için gelişim talebi oluşturabilirsiniz.");
+			throw new NotFoundException("Sporcu bulunamadı.");
 		}
 
 		CoachStudentProgress progress = new CoachStudentProgress();
@@ -86,7 +85,7 @@ public class CoachStudentProgressService {
 			.orElseThrow(() -> new NotFoundException("Gelişim talebi bulunamadı."));
 
 		if (!progress.getClient().getUserId().equals(currentUser.getId())) {
-			throw new BadRequestException("Bu talebe yanıt verme yetkiniz yoktur.");
+			throw new NotFoundException("Gelişim talebi bulunamadı.");
 		}
 
 		progress.setStatus(approved ? "APPROVED" : "REJECTED");
@@ -113,7 +112,7 @@ public class CoachStudentProgressService {
 		boolean isClient = progress.getClient().getUserId().equals(currentUser.getId());
 
 		if (!isCoach && !isClient) {
-			throw new BadRequestException("Bu kaydı silme yetkiniz yoktur.");
+			throw new NotFoundException("Gelişim kaydı bulunamadı.");
 		}
 
 		progressRepository.delete(progress);

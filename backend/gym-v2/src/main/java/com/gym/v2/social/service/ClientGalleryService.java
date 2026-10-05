@@ -4,9 +4,9 @@ import com.gym.v2.auth.entity.AppUser;
 import com.gym.v2.auth.entity.ClientEntity;
 import com.gym.v2.auth.repository.AppUserRepository;
 import com.gym.v2.auth.repository.ClientRepository;
-import com.gym.v2.core.exception.BadRequestException;
 import com.gym.v2.core.exception.NotFoundException;
 import com.gym.v2.core.security.SecurityUtils;
+import org.springframework.security.access.AccessDeniedException;
 import com.gym.v2.social.dto.ClientGalleryDto;
 import com.gym.v2.social.entity.ClientGallery;
 import com.gym.v2.social.repository.ClientGalleryRepository;
@@ -45,7 +45,7 @@ public class ClientGalleryService {
 	public ClientGalleryDto addToGallery(String imageUrl) {
 		AppUser currentUser = getCurrentUser();
 		ClientEntity client = clientRepository.findByUserId(currentUser.getId())
-			.orElseThrow(() -> new BadRequestException("Sadece sporcular galeriye resim ekleyebilir."));
+			.orElseThrow(() -> new AccessDeniedException("Sadece sporcular galeriye resim ekleyebilir."));
 
 		ClientGallery gallery = new ClientGallery();
 		gallery.setClient(client);
@@ -62,7 +62,7 @@ public class ClientGalleryService {
 			.orElseThrow(() -> new NotFoundException("Galeri öğesi bulunamadı."));
 
 		if (!item.getClient().getUserId().equals(currentUser.getId())) {
-			throw new BadRequestException("Bu galeri öğesini silme yetkiniz yoktur.");
+			throw new NotFoundException("Galeri öğesi bulunamadı.");
 		}
 
 		galleryRepository.delete(item);

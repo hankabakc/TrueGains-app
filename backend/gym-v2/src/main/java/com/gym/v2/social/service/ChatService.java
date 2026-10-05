@@ -164,7 +164,7 @@ public class ChatService {
 		// ERİŞİM KONTROLÜ: Kullanıcı bu konuşmanın tarafı mı?
 		if (!conversation.getClient().getId().equals(currentUser.getId())
 				&& !conversation.getCoach().getId().equals(currentUser.getId())) {
-			throw new BadRequestException("Bu konuşmaya erişim yetkiniz yok.");
+			throw new NotFoundException("Konuşma bulunamadı.");
 		}
 
 		// Tekrar koruması (G-79): erişim kontrolünden SONRA, konuşmanın tarafı olmayan
@@ -375,7 +375,7 @@ public class ChatService {
 			.orElseThrow(() -> new NotFoundException("Konuşma bulunamadı."));
 		if (!conv.getClient().getId().equals(currentUser.getId())
 				&& !conv.getCoach().getId().equals(currentUser.getId())) {
-			throw new BadRequestException("Bu konuşmaya erişim yetkiniz yok.");
+			throw new NotFoundException("Konuşma bulunamadı.");
 		}
 	}
 

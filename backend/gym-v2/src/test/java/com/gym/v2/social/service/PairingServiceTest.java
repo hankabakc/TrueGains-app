@@ -10,6 +10,7 @@ import com.gym.v2.auth.repository.CoachRepository;
 import com.gym.v2.core.exception.NotFoundException;
 import com.gym.v2.core.security.EncryptionConverter;
 import com.gym.v2.core.security.service.UserContextService;
+import com.gym.v2.social.dto.CreatePairingRequest;
 import com.gym.v2.social.dto.DiscoveryUserDto;
 import com.gym.v2.social.entity.PairingRequest;
 import com.gym.v2.social.entity.PairingStatus;
@@ -112,7 +113,8 @@ class PairingServiceTest {
 		PairingRequest request = requestAddressedTo(77L);
 		when(pairingRequestRepository.findById(30L)).thenReturn(Optional.of(request));
 
-		assertThatThrownBy(() -> service.respondToRequest(30L, true)).isInstanceOf(AccessDeniedException.class);
+		assertThatThrownBy(() -> service.respondToRequest(30L, true)).isInstanceOf(NotFoundException.class)
+			.hasMessage("İstek bulunamadı.");
 
 		// İstek durumu değişmemeli; aksi hâlde yabancı koç sporcuyu kendine bağlardı.
 		assertThat(request.getStatus()).isEqualTo(PairingStatus.PENDING);
@@ -201,6 +203,20 @@ class PairingServiceTest {
 
 		// Tanınmayan değer sessizce varsayılana düşer; SQL'e ham girdi gitmez.
 		assertThat(captor.getAllValues()).containsExactly("newest", "rating");
+	}
+
+	@Test
+	void wrongRole_isForbidden() {
+		when(clientRepository.findByUserId(2L)).thenReturn(Optional.empty());
+
+		assertThatThrownBy(() -> service.sendPairingRequest(new CreatePairingRequest(3L, "selam")))
+			.isInstanceOf(AccessDeniedException.class)
+			.hasMessage("Sadece sporcular eşleşme isteği gönderebilir.");
+
+		currentCoachUser.setRole(UserRole.CLIENT);
+
+		assertThatThrownBy(() -> service.getMyActiveClients()).isInstanceOf(AccessDeniedException.class)
+			.hasMessage("Bu işlemi sadece antrenörler yapabilir.");
 	}
 
 }

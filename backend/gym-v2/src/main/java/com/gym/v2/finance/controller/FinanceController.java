@@ -3,9 +3,10 @@ package com.gym.v2.finance.controller;
 import com.gym.v2.auth.entity.AppUser;
 import com.gym.v2.core.response.ApiResponse;
 import com.gym.v2.finance.dto.ClientSubscriptionDTO;
+import com.gym.v2.finance.dto.CoachDashboardStatsDTO;
 import com.gym.v2.finance.dto.PaymentTransactionDTO;
-import com.gym.v2.finance.dto.SubscriptionPackageDTO;
 import com.gym.v2.finance.dto.PurchaseIntentDTO;
+import com.gym.v2.finance.dto.SubscriptionPackageDTO;
 import com.gym.v2.finance.service.FinanceService;
 import jakarta.validation.Valid;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -149,7 +150,7 @@ public class FinanceController {
 	 */
 	@GetMapping("/coach/dashboard-stats")
 	@PreAuthorize("hasRole('COACH')")
-	public ApiResponse<com.gym.v2.finance.dto.CoachDashboardStatsDTO> getCoachDashboardStats() {
+	public ApiResponse<CoachDashboardStatsDTO> getCoachDashboardStats() {
 		return ApiResponse.success(financeService.getCoachDashboardStats(), "Panel verileri getirildi.",
 				clock.instant());
 	}

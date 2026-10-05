@@ -21,7 +21,6 @@ import java.util.Optional;
 import java.util.stream.Collectors;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -119,7 +118,7 @@ public class MeasurementService {
 		// Yetki Kontrolü: 400 BadRequest değil, 403 Forbidden (AccessDeniedException)
 		// olmalı
 		if (!Objects.equals(measurement.getUser().getId(), currentUser.getId())) {
-			throw new AccessDeniedException("Bu ölçümü silme yetkiniz yoktur.");
+			throw new NotFoundException("Ölçüm kaydı bulunamadı.");
 		}
 		measurementRepository.delete(measurement);
 	}
@@ -133,7 +132,7 @@ public class MeasurementService {
 			.orElseThrow(() -> new NotFoundException("Sporcu kaydı bulunamadı."));
 
 		if (!Objects.equals(client.getCoachId(), currentCoach.getId())) {
-			throw new AccessDeniedException("Bu sporcunun ölçümlerini görme yetkiniz yoktur.");
+			throw new NotFoundException("Sporcu kaydı bulunamadı.");
 		}
 
 		Page<Measurement> measurements = measurementRepository
@@ -170,7 +169,7 @@ public class MeasurementService {
 		for (Measurement measurement : measurements) {
 			// Aktif kullanıcıya ait olup olmadığı kontrol edilir
 			if (!Objects.equals(measurement.getUser().getId(), currentUser.getId())) {
-				throw new AccessDeniedException("Bu ölçüm kayıtlarını paylaşma yetkiniz yoktur.");
+				throw new NotFoundException("Seçilen ölçüm kayıtlarından bazıları bulunamadı.");
 			}
 			// Zaten paylaşıldıysa hata fırlatılır
 			if (Boolean.TRUE.equals(measurement.getIsSharedWithCoach())) {
@@ -239,7 +238,7 @@ public class MeasurementService {
 			.orElseThrow(() -> new NotFoundException("Sporcu kaydı bulunamadı."));
 
 		if (!Objects.equals(client.getCoachId(), currentCoach.getId())) {
-			throw new AccessDeniedException("Bu sporcunun ölçümlerini görme yetkiniz yoktur.");
+			throw new NotFoundException("Sporcu kaydı bulunamadı.");
 		}
 
 		// Sporcunun paylaştığı ölçümler çekilir

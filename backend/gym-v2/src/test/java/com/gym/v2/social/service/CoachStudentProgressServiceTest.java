@@ -6,10 +6,11 @@ import com.gym.v2.auth.entity.CoachEntity;
 import com.gym.v2.auth.repository.AppUserRepository;
 import com.gym.v2.auth.repository.ClientRepository;
 import com.gym.v2.auth.repository.CoachRepository;
-import com.gym.v2.core.exception.BadRequestException;
+import com.gym.v2.core.exception.NotFoundException;
 import com.gym.v2.social.dto.CreateProgressRequest;
 import com.gym.v2.social.entity.CoachStudentProgress;
 import com.gym.v2.social.repository.CoachStudentProgressRepository;
+import org.springframework.security.access.AccessDeniedException;
 import java.util.Optional;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -115,9 +116,43 @@ class CoachStudentProgressServiceTest {
 
 		assertThatThrownBy(() -> service.createProgressRequest(new CreateProgressRequest(1L, "Rumuz",
 				"/api/v1/files/once.jpg", "/api/v1/files/sonra.png", "aciklama")))
-			.isInstanceOf(BadRequestException.class);
+			.isInstanceOf(NotFoundException.class)
+			.hasMessage("Sporcu bulunamadı.");
 
 		verify(progressRepository, never()).save(any());
+	}
+
+	@Test
+	void wrongRoleOrForeignRecord_isRejectedAndWritesNothing() {
+		// 1) Koç profili olmayan kullanıcı createProgressRequest çağırırsa -> 403 AD
+		when(coachRepository.findByUserId(2L)).thenReturn(Optional.empty());
+
+		assertThatThrownBy(() -> service
+			.createProgressRequest(new CreateProgressRequest(1L, "Rumuz", "/a.jpg", "/b.jpg", "açıklama")))
+			.isInstanceOf(AccessDeniedException.class)
+			.hasMessage("Sadece antrenörler gelişim talebi oluşturabilir.");
+
+		// 2) Başka sporcuya ait talep respondToProgressRequest -> 404 NF
+		CoachStudentProgress foreignProgress = new CoachStudentProgress();
+		ClientEntity otherClient = new ClientEntity();
+		ReflectionTestUtils.setField(otherClient, "userId", 99L);
+		foreignProgress.setClient(otherClient);
+		when(progressRepository.findById(10L)).thenReturn(Optional.of(foreignProgress));
+
+		assertThatThrownBy(() -> service.respondToProgressRequest(10L, true)).isInstanceOf(NotFoundException.class)
+			.hasMessage("Gelişim talebi bulunamadı.");
+
+		// 3) Yabancı kullanıcı deleteProgress -> 404 NF
+		CoachEntity otherCoach = new CoachEntity();
+		ReflectionTestUtils.setField(otherCoach, "userId", 88L);
+		foreignProgress.setCoach(otherCoach);
+		when(progressRepository.findById(20L)).thenReturn(Optional.of(foreignProgress));
+
+		assertThatThrownBy(() -> service.deleteProgress(20L)).isInstanceOf(NotFoundException.class)
+			.hasMessage("Gelişim kaydı bulunamadı.");
+
+		verify(progressRepository, never()).save(any());
+		verify(progressRepository, never()).delete(any());
 	}
 
 }

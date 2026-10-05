@@ -7,6 +7,7 @@ import com.gym.v2.support.IntegrationTestBase;
 import org.junit.jupiter.api.Test;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
@@ -52,12 +53,14 @@ class CrossCoachAccessIT extends IntegrationTestBase {
 	}
 
 	@Test
-	void getSharedMeasurementsForClient_foreignCoach_returnsForbidden() throws Exception {
+	void getSharedMeasurementsForClient_foreignCoach_returnsNotFound() throws Exception {
 		setUpCoachesAndClient();
 
-		mockMvc.perform(get("/api/v1/coaches/measurements/shared/" + clientUser.getId()).header("Authorization",
-				bearerTokenFor(coachB)))
-			.andExpect(status().isForbidden());
+		mockMvc
+			.perform(get("/api/v1/coaches/measurements/shared/" + clientUser.getId()).header("Authorization",
+					bearerTokenFor(coachB)))
+			.andExpect(status().isNotFound())
+			.andExpect(jsonPath("$.message").value("Sporcu kaydı bulunamadı."));
 	}
 
 	/**
@@ -75,13 +78,14 @@ class CrossCoachAccessIT extends IntegrationTestBase {
 	}
 
 	@Test
-	void getClientProfile_foreignCoach_returnsForbidden() throws Exception {
+	void getClientProfile_foreignCoach_returnsNotFound() throws Exception {
 		setUpCoachesAndClient();
 
 		mockMvc
 			.perform(
 					get("/api/v1/profile/client/" + clientUser.getId()).header("Authorization", bearerTokenFor(coachB)))
-			.andExpect(status().isForbidden());
+			.andExpect(status().isNotFound())
+			.andExpect(jsonPath("$.message").value("Sporcu profili bulunamadı. ID: " + clientUser.getId()));
 	}
 
 	@Test

@@ -10,6 +10,7 @@ import com.gym.v2.core.exception.BadRequestException;
 import com.gym.v2.core.exception.NotFoundException;
 import com.gym.v2.core.security.EncryptionConverter;
 import com.gym.v2.core.security.SecurityUtils;
+import com.gym.v2.finance.entity.ClientSubscription;
 import com.gym.v2.finance.repository.ClientSubscriptionRepository;
 import com.gym.v2.social.dto.*;
 import com.gym.v2.social.entity.CoachGallery;
@@ -19,6 +20,7 @@ import com.gym.v2.social.repository.CoachReviewRepository;
 import com.gym.v2.social.repository.CoachStudentProgressRepository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -87,9 +89,7 @@ public class CoachProfileService {
 		Double averageRating = reviewRepository.getAverageRatingByCoachUserId(coachId);
 		int reviewCount = reviewRepository.countByCoachUserId(coachId);
 		int activeStudentCount = clientRepository.countByCoachId(coachId);
-		java.time.Instant memberSince = userRepository.findById(coachId)
-			.map(com.gym.v2.auth.entity.AppUser::getRegisteredAt)
-			.orElse(null);
+		java.time.Instant memberSince = userRepository.findById(coachId).map(AppUser::getRegisteredAt).orElse(null);
 
 		return new CoachProfileResponse(coach.getUserId(), coach.getFullName(), coach.getProfilePhotoUrl(),
 				coach.getBio(), coach.getSpecialization(), coach.getCurrency(), "0-50", isSubscribed,
@@ -107,14 +107,13 @@ public class CoachProfileService {
 	public CoachReviewDto addReview(Long coachId, Integer rating, String comment) {
 		AppUser currentUser = getCurrentUser();
 		ClientEntity client = clientRepository.findByUserId(currentUser.getId())
-			.orElseThrow(() -> new BadRequestException("Sadece sporcular değerlendirme yapabilir."));
+			.orElseThrow(() -> new AccessDeniedException("Sadece sporcular değerlendirme yapabilir."));
 
 		CoachEntity coach = coachRepository.findByUserId(coachId)
 			.orElseThrow(() -> new NotFoundException("Antrenör bulunamadı."));
 
 		// Abonelik doğrulaması (Adım 4) ve yakalanması
-		com.gym.v2.finance.entity.ClientSubscription activeSub = subscriptionRepository
-			.findActiveSubscriptionByClientId(client.getUserId())
+		ClientSubscription activeSub = subscriptionRepository.findActiveSubscriptionByClientId(client.getUserId())
 			.filter(sub -> sub.getCoach() != null && sub.getCoach().getId().equals(coachId))
 			.orElseThrow(() -> new BadRequestException(
 					"Bu antrenörü değerlendirmek için aktif bir aboneliğiniz olmalıdır."));
@@ -144,7 +143,7 @@ public class CoachProfileService {
 	public CoachGalleryDto addGalleryItem(AddGalleryItemRequest request) {
 		AppUser currentUser = getCurrentUser();
 		CoachEntity coach = coachRepository.findByUserId(currentUser.getId())
-			.orElseThrow(() -> new BadRequestException("Sadece antrenörler galeriye resim ekleyebilir."));
+			.orElseThrow(() -> new AccessDeniedException("Sadece antrenörler galeriye resim ekleyebilir."));
 
 		CoachGallery item = new CoachGallery();
 		item.setCoach(coach);
@@ -163,7 +162,7 @@ public class CoachProfileService {
 			.orElseThrow(() -> new NotFoundException("Galeri öğesi bulunamadı."));
 
 		if (!item.getCoach().getUserId().equals(currentUser.getId())) {
-			throw new BadRequestException("Bu galeri öğesini silme yetkiniz yoktur.");
+			throw new NotFoundException("Galeri öğesi bulunamadı.");
 		}
 
 		galleryRepository.delete(item);
