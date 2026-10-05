@@ -3,7 +3,6 @@ package com.gym.v2.nutrition.service;
 import com.gym.v2.auth.entity.AppUser;
 import com.gym.v2.auth.entity.ClientEntity;
 import com.gym.v2.auth.repository.ClientRepository;
-import com.gym.v2.core.exception.BadRequestException;
 import com.gym.v2.core.exception.NotFoundException;
 import com.gym.v2.core.security.EncryptionConverter;
 import com.gym.v2.core.security.service.UserContextService;
@@ -82,7 +81,7 @@ class CoachWaterTrackingServiceTest {
 	void getStudentWaterIntake_clientAssignedToAnotherCoach_throwsAndReadsNoData() {
 		when(clientRepository.findByUserId(50L)).thenReturn(Optional.of(clientLinkedTo(7L)));
 
-		assertThatThrownBy(() -> service.getStudentWaterIntake(50L)).isInstanceOf(BadRequestException.class);
+		assertThatThrownBy(() -> service.getStudentWaterIntake(50L)).isInstanceOf(NotFoundException.class);
 
 		verify(intakeRepository, never()).getTotalIntakeByDate(any(), any());
 	}
@@ -92,7 +91,7 @@ class CoachWaterTrackingServiceTest {
 		when(clientRepository.findByUserId(50L)).thenReturn(Optional.of(clientLinkedTo(null)));
 
 		// Koçu olmayan sporcunun verisi hiçbir koça açık olmamalı.
-		assertThatThrownBy(() -> service.getStudentWaterIntake(50L)).isInstanceOf(BadRequestException.class);
+		assertThatThrownBy(() -> service.getStudentWaterIntake(50L)).isInstanceOf(NotFoundException.class);
 	}
 
 	@Test

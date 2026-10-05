@@ -1,7 +1,6 @@
 package com.gym.v2.nutrition.service;
 
 import com.gym.v2.auth.entity.AppUser;
-import com.gym.v2.core.exception.BadRequestException;
 import com.gym.v2.core.exception.NotFoundException;
 import com.gym.v2.core.security.service.UserContextService;
 import com.gym.v2.nutrition.entity.DietDay;
@@ -171,7 +170,7 @@ class DietEntryServiceTest {
 		when(mealRepository.findById(55L)).thenReturn(Optional.of(plannedMealOwnedBy(someoneElse)));
 
 		assertThatThrownBy(() -> service.togglePlannedMeal(DATE, 55L, true, List.of(1L)))
-			.isInstanceOf(BadRequestException.class);
+			.isInstanceOf(NotFoundException.class);
 
 		verify(mealEntryRepository, never()).save(any());
 	}
@@ -184,7 +183,7 @@ class DietEntryServiceTest {
 		when(mealRepository.findById(55L)).thenReturn(Optional.of(plannedMealOwnedBy(someoneElse)));
 
 		assertThatThrownBy(() -> service.togglePlannedMeal(DATE, 55L, true, List.of(1L)))
-			.isInstanceOf(BadRequestException.class);
+			.isInstanceOf(NotFoundException.class);
 
 		verify(mealEntryRepository, never()).save(any());
 	}

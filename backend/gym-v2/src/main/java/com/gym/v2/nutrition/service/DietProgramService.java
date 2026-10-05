@@ -16,6 +16,7 @@ import org.slf4j.LoggerFactory;
 import com.gym.v2.nutrition.event.DietTemplateUpdatedEvent;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -97,7 +98,7 @@ public class DietProgramService {
 		boolean isCoachOfProgram = program.getCoach() != null && program.getCoach().getId().equals(currentUser.getId());
 
 		if (!isOwner && !isCoachOfProgram) {
-			throw new BadRequestException("Bu diyet programına erişim yetkiniz yok!");
+			throw new NotFoundException("Diyet programı bulunamadı: " + id);
 		}
 
 		return nutritionMapper.toProgramResponse(program, program.getOwner().getId());
@@ -150,7 +151,7 @@ public class DietProgramService {
 			.orElseThrow(() -> new NotFoundException("Diyet programı bulunamadı: " + id));
 
 		if (!program.getOwner().getId().equals(currentUser.getId())) {
-			throw new BadRequestException("Bu program size ait değil!");
+			throw new NotFoundException("Diyet programı bulunamadı: " + id);
 		}
 
 		program.setMain(true);
@@ -226,7 +227,13 @@ public class DietProgramService {
 		DietProgram saved = programRepository.saveAndFlush(program);
 		auditLogService.log("DIET_PROGRAM_RENAMED", currentUser.getEmail(),
 				"Diyet programı yeniden adlandırıldı. ID: " + id);
-		handleSyncAndNotification(saved);
+		// Şablon adı kopyalara taşınmaz (kopya, atandığı andaki adı taşır).
+		// Şablonda olay yayımlamak her kopyanın besinlerini şablondan yeniden
+		// kurar ve koçun kopyaya özel düzenlemesini siler (G-90 denetimi).
+		// Yalnız sporcunun programı için bildirim gider.
+		if (!saved.isTemplate()) {
+			handleSyncAndNotification(saved);
+		}
 		return nutritionMapper.toProgramResponse(saved, currentUser.getId());
 	}
 
@@ -253,7 +260,7 @@ public class DietProgramService {
 
 		// Eğer kişi ne sahibi ne de atayan koç ise silme yetkisi yoktur.
 		if (!isOwner && !isCoach) {
-			throw new BadRequestException("Bu programı silme yetkiniz yok!");
+			throw new NotFoundException("Diyet programı bulunamadı: " + id);
 		}
 
 		if (program.isTemplate()) {
@@ -327,7 +334,7 @@ public class DietProgramService {
 		boolean isCoachOfProgram = program.getCoach() != null && program.getCoach().getId().equals(currentUser.getId());
 
 		if (!isOwner && !isCoachOfProgram) {
-			throw new BadRequestException("Bu diyet programına erişim yetkiniz yok!");
+			throw new NotFoundException("Diyet programı bulunamadı: " + program.getId());
 		}
 
 		// Antrenör kaynaklı program yalnızca onu hazırlayan koç tarafından
@@ -335,7 +342,7 @@ public class DietProgramService {
 		// Yasak yalnızca programı alan sporcu (CLIENT) için geçerlidir; koçun kendi
 		// programı (owner=koç, coach=null) düzenlenebilir kalmalıdır.
 		if (DietSource.COACH == program.getSource() && currentUser.getRole() == UserRole.CLIENT) {
-			throw new BadRequestException("Antrenör tarafından hazırlanan programlarda değişiklik yapılamaz!");
+			throw new AccessDeniedException("Antrenör tarafından hazırlanan programlarda değişiklik yapılamaz!");
 		}
 	}
 
@@ -390,7 +397,7 @@ public class DietProgramService {
 
 		AppUser currentUser = userContextService.getCurrentUser();
 		if (!program.getOwner().getId().equals(currentUser.getId())) {
-			throw new BadRequestException("Bu program üzerinde işlem yapma yetkiniz yok.");
+			throw new NotFoundException("Diyet programı bulunamadı: " + id);
 		}
 
 		if (keep) {

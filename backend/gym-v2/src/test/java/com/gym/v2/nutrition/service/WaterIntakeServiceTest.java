@@ -1,7 +1,6 @@
 package com.gym.v2.nutrition.service;
 
 import com.gym.v2.auth.entity.AppUser;
-import com.gym.v2.core.exception.BadRequestException;
 import com.gym.v2.core.exception.NotFoundException;
 import com.gym.v2.core.security.service.UserContextService;
 import com.gym.v2.nutrition.entity.CustomGlass;
@@ -81,7 +80,7 @@ class WaterIntakeServiceTest {
 		glass.setUser(otherUser);
 		when(glassRepository.findById(5L)).thenReturn(Optional.of(glass));
 
-		assertThatThrownBy(() -> service.deleteCustomGlass(5L)).isInstanceOf(BadRequestException.class);
+		assertThatThrownBy(() -> service.deleteCustomGlass(5L)).isInstanceOf(NotFoundException.class);
 
 		verify(glassRepository, never()).delete(any());
 	}
@@ -110,7 +109,7 @@ class WaterIntakeServiceTest {
 		intake.setUser(otherUser);
 		when(intakeRepository.findById(7L)).thenReturn(Optional.of(intake));
 
-		assertThatThrownBy(() -> service.deleteWaterIntake(7L)).isInstanceOf(BadRequestException.class);
+		assertThatThrownBy(() -> service.deleteWaterIntake(7L)).isInstanceOf(NotFoundException.class);
 
 		verify(intakeRepository, never()).delete(any());
 	}

@@ -1,7 +1,6 @@
 package com.gym.v2.nutrition.service;
 
 import com.gym.v2.auth.entity.AppUser;
-import com.gym.v2.core.exception.BadRequestException;
 import com.gym.v2.core.exception.NotFoundException;
 import com.gym.v2.core.security.service.UserContextService;
 import com.gym.v2.nutrition.dto.LogMealItemRequest;
@@ -225,7 +224,7 @@ class MealLogServiceTest {
 		MealEntry foreign = new MealEntry(otherUser, NOW, MealType.OGLE_YEMEGI);
 		when(mealEntryRepository.findById(99L)).thenReturn(Optional.of(foreign));
 
-		assertThatThrownBy(() -> service.deleteMealEntry(99L)).isInstanceOf(BadRequestException.class);
+		assertThatThrownBy(() -> service.deleteMealEntry(99L)).isInstanceOf(NotFoundException.class);
 
 		verify(mealEntryRepository, never()).delete(any());
 	}
@@ -247,7 +246,7 @@ class MealLogServiceTest {
 		foreign.addItem(item);
 		when(mealItemRepository.findById(7L)).thenReturn(Optional.of(item));
 
-		assertThatThrownBy(() -> service.deleteMealItem(7L)).isInstanceOf(BadRequestException.class);
+		assertThatThrownBy(() -> service.deleteMealItem(7L)).isInstanceOf(NotFoundException.class);
 
 		verify(mealEntryRepository, never()).delete(any());
 		verify(mealEntryRepository, never()).saveAndFlush(any());

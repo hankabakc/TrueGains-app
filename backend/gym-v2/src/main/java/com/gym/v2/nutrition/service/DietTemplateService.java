@@ -16,6 +16,7 @@ import com.gym.v2.nutrition.event.DietTemplateUpdatedEvent;
 import com.gym.v2.nutrition.repository.DietProgramRepository;
 import org.springframework.context.event.EventListener;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -69,7 +70,7 @@ public class DietTemplateService {
 	public List<DietProgramResponse> getCoachTemplates() {
 		AppUser currentUser = userContextService.getCurrentUser();
 		if (currentUser.getRole() != UserRole.COACH) {
-			throw new BadRequestException("Şablonları sadece antrenörler görüntüleyebilir!");
+			throw new AccessDeniedException("Şablonları sadece antrenörler görüntüleyebilir!");
 		}
 		List<DietProgram> templates = programRepository
 			.findByOwnerIdAndTemplateTrueOrderByCreatedAtDesc(currentUser.getId());
@@ -80,7 +81,7 @@ public class DietTemplateService {
 	public DietProgramResponse createTemplate(String name) {
 		AppUser currentUser = userContextService.getCurrentUser();
 		if (currentUser.getRole() != UserRole.COACH) {
-			throw new BadRequestException("Şablonları sadece antrenörler oluşturabilir!");
+			throw new AccessDeniedException("Şablonları sadece antrenörler oluşturabilir!");
 		}
 
 		DietProgram template = new DietProgram(currentUser, name, DietSource.COACH);
@@ -108,21 +109,21 @@ public class DietTemplateService {
 	public DietProgramResponse assignTemplateToClient(Long templateId, Long clientId) {
 		AppUser currentUser = userContextService.getCurrentUser();
 		if (currentUser.getRole() != UserRole.COACH) {
-			throw new BadRequestException("Atama işlemini sadece antrenörler yapabilir!");
+			throw new AccessDeniedException("Atama işlemini sadece antrenörler yapabilir!");
 		}
 
 		DietProgram template = programRepository.findById(templateId)
 			.orElseThrow(() -> new NotFoundException("Şablon bulunamadı: " + templateId));
 
 		if (!template.isTemplate() || !template.getOwner().getId().equals(currentUser.getId())) {
-			throw new BadRequestException("Geçersiz şablon veya erişim yetkisi yok!");
+			throw new NotFoundException("Şablon bulunamadı: " + templateId);
 		}
 
 		ClientEntity client = clientRepository.findByUserId(clientId)
 			.orElseThrow(() -> new NotFoundException("Öğrenci bulunamadı: " + clientId));
 
 		if (client.getCoachId() == null || !client.getCoachId().equals(currentUser.getId())) {
-			throw new BadRequestException("Bu öğrenci size atanmamış!");
+			throw new NotFoundException("Öğrenci bulunamadı: " + clientId);
 		}
 
 		AppUser clientUser = client.getUser();
@@ -185,14 +186,14 @@ public class DietTemplateService {
 	public List<DietAssignmentResponse> getTemplateAssignments(Long templateId) {
 		AppUser currentUser = userContextService.getCurrentUser();
 		if (currentUser.getRole() != UserRole.COACH) {
-			throw new BadRequestException("Atamaları sadece antrenörler görüntüleyebilir!");
+			throw new AccessDeniedException("Atamaları sadece antrenörler görüntüleyebilir!");
 		}
 
 		DietProgram template = programRepository.findById(templateId)
 			.orElseThrow(() -> new NotFoundException("Şablon bulunamadı: " + templateId));
 
 		if (!template.isTemplate() || !template.getOwner().getId().equals(currentUser.getId())) {
-			throw new BadRequestException("Geçersiz şablon veya erişim yetkisi yok!");
+			throw new NotFoundException("Şablon bulunamadı: " + templateId);
 		}
 
 		return toAssignmentResponses(programRepository.findByOriginalTemplateId(templateId));
@@ -202,14 +203,14 @@ public class DietTemplateService {
 	public void unassignTemplate(Long templateId, Long clientId) {
 		AppUser currentUser = userContextService.getCurrentUser();
 		if (currentUser.getRole() != UserRole.COACH) {
-			throw new BadRequestException("Atamayı sadece antrenörler kaldırabilir!");
+			throw new AccessDeniedException("Atamayı sadece antrenörler kaldırabilir!");
 		}
 
 		DietProgram template = programRepository.findById(templateId)
 			.orElseThrow(() -> new NotFoundException("Şablon bulunamadı: " + templateId));
 
 		if (!template.isTemplate() || !template.getOwner().getId().equals(currentUser.getId())) {
-			throw new BadRequestException("Geçersiz şablon veya erişim yetkisi yok!");
+			throw new NotFoundException("Şablon bulunamadı: " + templateId);
 		}
 
 		List<DietProgram> assigned = programRepository.findByOriginalTemplateId(templateId);
@@ -232,7 +233,7 @@ public class DietTemplateService {
 	public List<DietAssignmentResponse> getCoachAssignments() {
 		AppUser currentUser = userContextService.getCurrentUser();
 		if (currentUser.getRole() != UserRole.COACH) {
-			throw new BadRequestException("Atamaları sadece antrenörler görüntüleyebilir!");
+			throw new AccessDeniedException("Atamaları sadece antrenörler görüntüleyebilir!");
 		}
 
 		return toAssignmentResponses(programRepository.findByCoachIdAndTemplateFalse(currentUser.getId()));
@@ -249,7 +250,7 @@ public class DietTemplateService {
 		// İşlemi yapan güncel koç kullanıcısı alınır.
 		AppUser currentUser = userContextService.getCurrentUser();
 		if (currentUser.getRole() != UserRole.COACH) {
-			throw new BadRequestException("Atamaları sadece antrenörler görüntüleyebilir!");
+			throw new AccessDeniedException("Atamaları sadece antrenörler görüntüleyebilir!");
 		}
 
 		// Bilgileri istenen sporcu ve koç ilişkisi doğrulanır.
@@ -257,7 +258,7 @@ public class DietTemplateService {
 			.orElseThrow(() -> new NotFoundException("Öğrenci bulunamadı: " + clientId));
 
 		if (client.getCoachId() == null || !client.getCoachId().equals(currentUser.getId())) {
-			throw new BadRequestException("Bu öğrenci size atanmamış!");
+			throw new NotFoundException("Öğrenci bulunamadı: " + clientId);
 		}
 
 		// Koçun bu sporcuya atamış olduğu aktif (isTemplate = false) diyet programı kopya

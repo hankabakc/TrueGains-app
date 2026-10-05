@@ -3,7 +3,6 @@ package com.gym.v2.nutrition.service;
 import com.gym.v2.auth.entity.AppUser;
 import com.gym.v2.auth.entity.UserRole;
 import com.gym.v2.auth.repository.ClientRepository;
-import com.gym.v2.core.exception.BadRequestException;
 import com.gym.v2.core.exception.NotFoundException;
 import com.gym.v2.core.security.service.UserContextService;
 import com.gym.v2.core.security.service.AuditLogService;
@@ -116,7 +115,7 @@ class DietProgramServiceTest {
 		currentUserIs(outsider);
 		when(programRepository.findById(10L)).thenReturn(Optional.of(program()));
 
-		assertThatThrownBy(() -> service.getProgram(10L)).isInstanceOf(BadRequestException.class);
+		assertThatThrownBy(() -> service.getProgram(10L)).isInstanceOf(NotFoundException.class);
 
 		// Yabancı kullanıcıya program verisi hiç hazırlanmamalı.
 		verify(nutritionMapper, never()).toProgramResponse(any(), any());
@@ -159,7 +158,7 @@ class DietProgramServiceTest {
 		when(programRepository.findById(10L)).thenReturn(Optional.of(program()));
 
 		// Aktif programı seçmek sporcunun kendi kararıdır; koç zorlayamaz.
-		assertThatThrownBy(() -> service.activateProgram(10L)).isInstanceOf(BadRequestException.class);
+		assertThatThrownBy(() -> service.activateProgram(10L)).isInstanceOf(NotFoundException.class);
 
 		verify(programRepository, never()).save(any());
 	}
@@ -186,7 +185,7 @@ class DietProgramServiceTest {
 		currentUserIs(outsider);
 		when(programRepository.findById(10L)).thenReturn(Optional.of(program()));
 
-		assertThatThrownBy(() -> service.deleteProgram(10L)).isInstanceOf(BadRequestException.class);
+		assertThatThrownBy(() -> service.deleteProgram(10L)).isInstanceOf(NotFoundException.class);
 
 		verify(programRepository, never()).delete(any());
 	}
@@ -198,7 +197,7 @@ class DietProgramServiceTest {
 		when(programRepository.findById(10L)).thenReturn(Optional.of(program()));
 
 		// COACH rolüne sahip olmak yetmez; programı atayan koç olmak gerekir.
-		assertThatThrownBy(() -> service.deleteProgram(10L)).isInstanceOf(BadRequestException.class);
+		assertThatThrownBy(() -> service.deleteProgram(10L)).isInstanceOf(NotFoundException.class);
 
 		verify(programRepository, never()).delete(any());
 	}
@@ -212,7 +211,7 @@ class DietProgramServiceTest {
 		currentUserIs(outsider);
 		when(programRepository.findById(10L)).thenReturn(Optional.of(program()));
 
-		assertThatThrownBy(() -> service.approveOrphanedDietProgram(10L, true)).isInstanceOf(BadRequestException.class);
+		assertThatThrownBy(() -> service.approveOrphanedDietProgram(10L, true)).isInstanceOf(NotFoundException.class);
 
 		verify(programRepository, never()).delete(any());
 	}
@@ -266,6 +265,22 @@ class DietProgramServiceTest {
 
 		service.renameProgram(10L, "Yeni ad");
 		verify(auditLogService).log(eq("DIET_PROGRAM_RENAMED"), eq("koc@test.com"), anyString());
+	}
+
+	@Test
+	void renameTemplate_doesNotResyncAssignedCopies() {
+		currentUserIs(assignedCoach);
+		DietProgram template = new DietProgram();
+		template.setId(20L);
+		template.setOwner(assignedCoach);
+		template.setTemplate(true);
+
+		when(programRepository.findById(20L)).thenReturn(Optional.of(template));
+		when(programRepository.saveAndFlush(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+		service.renameProgram(20L, "Yeni ad");
+
+		verify(eventPublisher, never()).publishEvent(any(Object.class));
 	}
 
 }

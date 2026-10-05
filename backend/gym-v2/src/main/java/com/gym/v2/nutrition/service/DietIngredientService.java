@@ -72,9 +72,8 @@ public class DietIngredientService {
 
 		// Geçersiz kayıtlar SESSİZCE atlanmaz. Önceden sıfır miktar `continue` ile,
 		// bulunamayan besin/tarif `ifPresent` ile düşüyordu ve uç 200 dönüyordu:
-		// kullanıcı
-		// 10 besin ekleyip 7'sinin eklendiğini ancak sayarak fark ediyordu. Tekil uç
-		// (`addIngredient`) aynı durumların hepsinde zaten hata fırlatıyor.
+		// kullanıcı 10 besin ekleyip 7'sinin eklendiğini ancak sayarak fark ediyordu.
+		// Tekil uç (`addIngredient`) aynı durumların hepsinde zaten hata fırlatıyor.
 		List<Long> foodIds = new ArrayList<>();
 		List<Long> recipeIds = new ArrayList<>();
 		for (var req : requests) {
@@ -261,11 +260,9 @@ public class DietIngredientService {
 	}
 
 	private void handleSyncAndNotification(DietProgram program) {
-		// G-76: besin değişikliği programın kendi alanına dokunmadığı için @Version
-		// ilerlemiyordu; programı kirletmek
-		// sürümü artırır. G-90: sürüm flush'ta artar — yanıt flush'tan önce kurulursa
-		// istemci eski sürümü alır ve
-		// sonraki belgesi 409 ile reddedilir.
+		// G-76: besin değişikliği programın kendi alanına dokunmaz; @Version ancak
+		// program kirletilince ilerler. G-90: sürüm flush'ta artar — yanıt flush'tan
+		// önce kurulursa istemci eski sürümü alır ve sonraki belgesi 409 alır.
 		program.onUpdate(clock.instant());
 		mealRepository.flush();
 		programService.handleSyncAndNotification(program);

@@ -129,7 +129,7 @@ public class WaterIntakeService {
 		CustomGlass glass = glassRepository.findById(id)
 			.orElseThrow(() -> new NotFoundException("Özel bardak bulunamadı: " + id));
 		if (!glass.getUser().getId().equals(currentUser.getId())) {
-			throw new BadRequestException("Bu bardak size ait değil.");
+			throw new NotFoundException("Özel bardak bulunamadı: " + id);
 		}
 		glassRepository.delete(glass);
 	}
@@ -140,7 +140,7 @@ public class WaterIntakeService {
 		WaterIntake intake = intakeRepository.findById(id)
 			.orElseThrow(() -> new NotFoundException("Su kaydı bulunamadı: " + id));
 		if (!intake.getUser().getId().equals(currentUser.getId())) {
-			throw new BadRequestException("Bu kayıt size ait değil.");
+			throw new NotFoundException("Su kaydı bulunamadı: " + id);
 		}
 		intakeRepository.delete(intake);
 	}

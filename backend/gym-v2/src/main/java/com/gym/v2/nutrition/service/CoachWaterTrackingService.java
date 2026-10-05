@@ -3,7 +3,6 @@ package com.gym.v2.nutrition.service;
 import com.gym.v2.auth.entity.AppUser;
 import com.gym.v2.auth.entity.ClientEntity;
 import com.gym.v2.auth.repository.ClientRepository;
-import com.gym.v2.core.exception.BadRequestException;
 import com.gym.v2.core.exception.NotFoundException;
 import com.gym.v2.core.security.EncryptionConverter;
 import com.gym.v2.core.security.service.UserContextService;
@@ -130,7 +129,7 @@ public class CoachWaterTrackingService {
 
 		// Güvenlik Kontrolü (Sahiplik): İlgili sporcu bu koça atanmış mı?
 		if (client.getCoachId() == null || !client.getCoachId().equals(currentUser.getId())) {
-			throw new BadRequestException("Bu sporcunun verilerine erişim yetkiniz yok.");
+			throw new NotFoundException("Sporcu bulunamadı. ID: " + clientId);
 		}
 
 		// Sistem saati referans alınarak o günün tarihi belirlenir.

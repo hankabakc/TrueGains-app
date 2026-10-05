@@ -1,7 +1,6 @@
 package com.gym.v2.nutrition.service;
 
 import com.gym.v2.auth.entity.AppUser;
-import com.gym.v2.core.exception.BadRequestException;
 import com.gym.v2.core.exception.NotFoundException;
 import com.gym.v2.core.security.service.UserContextService;
 import com.gym.v2.nutrition.dto.*;
@@ -152,7 +151,7 @@ public class DietEntryService {
 				.orElseThrow(() -> new NotFoundException("Programdaki öğün bulunamadı!"));
 
 			if (!plannedMeal.getDietDay().getDietProgram().getOwner().getId().equals(user.getId())) {
-				throw new BadRequestException("Bu öğün size ait değil!");
+				throw new NotFoundException("Programdaki öğün bulunamadı!");
 			}
 
 			for (MealIngredient ing : plannedMeal.getIngredients()) {
@@ -170,7 +169,7 @@ public class DietEntryService {
 			.orElseThrow(() -> new NotFoundException("Programdaki öğün bulunamadı!"));
 
 		if (!plannedMeal.getDietDay().getDietProgram().getOwner().getId().equals(user.getId())) {
-			throw new BadRequestException("Bu öğün size ait değil!");
+			throw new NotFoundException("Programdaki öğün bulunamadı!");
 		}
 
 		MealEntry entry = createMealEntryFromPlanned(plannedMeal, user, ingredientIds, date);

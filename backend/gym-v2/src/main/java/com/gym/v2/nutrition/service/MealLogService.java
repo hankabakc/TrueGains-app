@@ -1,7 +1,6 @@
 package com.gym.v2.nutrition.service;
 
 import com.gym.v2.auth.entity.AppUser;
-import com.gym.v2.core.exception.BadRequestException;
 import com.gym.v2.core.exception.NotFoundException;
 import com.gym.v2.core.security.service.UserContextService;
 import com.gym.v2.nutrition.dto.LogMealRequest;
@@ -181,7 +180,7 @@ public class MealLogService {
 		MealEntry entry = mealEntryRepository.findById(entryId)
 			.orElseThrow(() -> new NotFoundException("Öğün kaydı bulunamadı: " + entryId));
 		if (!entry.getClient().getId().equals(user.getId())) {
-			throw new BadRequestException("Bu kayıt size ait değil!");
+			throw new NotFoundException("Öğün kaydı bulunamadı: " + entryId);
 		}
 		mealEntryRepository.delete(entry);
 	}
@@ -193,7 +192,7 @@ public class MealLogService {
 			.orElseThrow(() -> new NotFoundException("Öğün öğesi bulunamadı: " + itemId));
 		MealEntry entry = item.getMealEntry();
 		if (!entry.getClient().getId().equals(user.getId())) {
-			throw new BadRequestException("Bu kayıt size ait değil!");
+			throw new NotFoundException("Öğün öğesi bulunamadı: " + itemId);
 		}
 		entry.removeItem(item);
 		if (entry.getItems().isEmpty()) {

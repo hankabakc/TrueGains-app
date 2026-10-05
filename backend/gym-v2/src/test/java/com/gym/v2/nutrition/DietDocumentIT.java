@@ -390,7 +390,7 @@ class DietDocumentIT extends IntegrationTestBase {
 				.header("Authorization", bearerTokenFor(other))
 				.contentType(MediaType.APPLICATION_JSON)
 				.content(objectMapper.writeValueAsString(req)))
-			.andExpect(status().isBadRequest());
+			.andExpect(status().isNotFound());
 
 		entityManager.flush();
 		entityManager.clear();
@@ -424,7 +424,7 @@ class DietDocumentIT extends IntegrationTestBase {
 				.header("Authorization", bearerTokenFor(client))
 				.contentType(MediaType.APPLICATION_JSON)
 				.content(objectMapper.writeValueAsString(req)))
-			.andExpect(status().isBadRequest());
+			.andExpect(status().isForbidden());
 
 		entityManager.flush();
 		entityManager.clear();
@@ -880,7 +880,7 @@ class DietDocumentIT extends IntegrationTestBase {
 		AppUser client = createUser("doc_dup@test.com", UserRole.CLIENT);
 		Long programId = createProgramFor(client, "Plan 16");
 		Food food = createFood("Dup Food");
-		Long ingId = addIngredientToFirstMeal(client, programId, food.getId(), new BigDecimal("100.00"));
+		addIngredientToFirstMeal(client, programId, food.getId(), new BigDecimal("100.00"));
 
 		DietProgram fresh = loadProgram(programId);
 		Long version = fresh.getVersion();
