@@ -25,7 +25,10 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
@@ -85,6 +88,37 @@ public class FoodService {
 			clientRepository.findAllByCoachId(user.getId()).forEach(c -> ids.add(c.getUserId()));
 		}
 		return ids;
+	}
+
+	/**
+	 * G-90 (§1.3): plana eklenecek besinler tek sorguda. Bulunamayan ya da kullanıcının
+	 * göremediği (başkasının özel) besin aynı 404 ile reddedilir — varlığı sızdırılmaz.
+	 * Görünür üretici listesi yalnız özel besin varsa çekilir.
+	 */
+	public Map<Long, Food> findVisibleFoods(Collection<Long> ids, AppUser user) {
+		Map<Long, Food> foods = new HashMap<>();
+		if (ids.isEmpty()) {
+			return foods;
+		}
+		for (Food food : foodRepository.findAllById(ids)) {
+			foods.put(food.getId(), food);
+		}
+		List<Long> visibleCreatorIds = null;
+		for (Long id : ids) {
+			Food food = foods.get(id);
+			if (food == null) {
+				throw new NotFoundException("Besin bulunamadı: " + id);
+			}
+			if (!food.isGlobal()) {
+				if (visibleCreatorIds == null) {
+					visibleCreatorIds = resolveVisibleCreatorIds(user);
+				}
+				if (!visibleCreatorIds.contains(food.getCreatorId())) {
+					throw new NotFoundException("Besin bulunamadı: " + id);
+				}
+			}
+		}
+		return foods;
 	}
 
 	/**

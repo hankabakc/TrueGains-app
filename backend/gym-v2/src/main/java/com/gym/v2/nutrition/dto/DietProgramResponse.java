@@ -11,7 +11,7 @@ import java.util.List;
 public record DietProgramResponse(Long id, Long ownerId, String name, boolean isMain, boolean isTemplate, String source,
 		CoachInfo coach, Instant createdAt, BigDecimal targetCalories, BigDecimal targetProtein, BigDecimal targetCarbs,
 		BigDecimal targetFat, BigDecimal targetSugar, BigDecimal targetFiber, BigDecimal targetSodium,
-		BigDecimal targetCholesterol, BigDecimal targetPotassium, List<DietDayResponse> dietDays, Integer version,
+		BigDecimal targetCholesterol, BigDecimal targetPotassium, List<DietDayResponse> dietDays, Long version,
 		boolean isOrphaned) {
 	public record CoachInfo(Long id, String email, String fullName) {
 	}

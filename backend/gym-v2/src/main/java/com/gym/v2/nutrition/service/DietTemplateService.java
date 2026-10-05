@@ -8,6 +8,7 @@ import com.gym.v2.core.exception.BadRequestException;
 import com.gym.v2.core.exception.NotFoundException;
 import com.gym.v2.core.security.service.AuditLogService;
 import com.gym.v2.core.security.service.UserContextService;
+import com.gym.v2.core.service.TransactionalEvents;
 import com.gym.v2.nutrition.dto.DietAssignmentResponse;
 import com.gym.v2.nutrition.dto.DietProgramResponse;
 import com.gym.v2.nutrition.entity.*;
@@ -47,9 +48,12 @@ public class DietTemplateService {
 
 	private final SimpMessagingTemplate messagingTemplate;
 
+	private final TransactionalEvents transactionalEvents;
+
 	public DietTemplateService(DietProgramRepository programRepository, DietProgramService programService,
 			UserContextService userContextService, ClientRepository clientRepository, NutritionMapper nutritionMapper,
-			AuditLogService auditLogService, Clock clock, SimpMessagingTemplate messagingTemplate) {
+			AuditLogService auditLogService, Clock clock, SimpMessagingTemplate messagingTemplate,
+			TransactionalEvents transactionalEvents) {
 		this.programRepository = programRepository;
 		this.programService = programService;
 		this.userContextService = userContextService;
@@ -58,6 +62,7 @@ public class DietTemplateService {
 		this.auditLogService = auditLogService;
 		this.clock = clock;
 		this.messagingTemplate = messagingTemplate;
+		this.transactionalEvents = transactionalEvents;
 	}
 
 	@Transactional(readOnly = true)
@@ -169,7 +174,9 @@ public class DietTemplateService {
 				+ template.getName() + ", Öğrenci: " + clientUser.getEmail());
 
 		// WebSocket üzerinden sporcuya bildirim gönderilir
-		messagingTemplate.convertAndSend("/topic/diet/" + clientUser.getId(), "REFRESH_REQUIRED");
+		Long clientUserId = clientUser.getId();
+		transactionalEvents
+			.afterCommit(() -> messagingTemplate.convertAndSend("/topic/diet/" + clientUserId, "REFRESH_REQUIRED"));
 
 		return nutritionMapper.toProgramResponse(saved, clientUser.getId());
 	}
@@ -217,7 +224,8 @@ public class DietTemplateService {
 				"Diyet şablon ataması kaldırıldı. Şablon: " + template.getName() + ", Öğrenci ID: " + clientId);
 
 		// WebSocket ile sporcunun ekranını yenilet
-		messagingTemplate.convertAndSend("/topic/diet/" + clientId, "REFRESH_REQUIRED");
+		transactionalEvents
+			.afterCommit(() -> messagingTemplate.convertAndSend("/topic/diet/" + clientId, "REFRESH_REQUIRED"));
 	}
 
 	@Transactional(readOnly = true)
@@ -368,7 +376,9 @@ public class DietTemplateService {
 			programRepository.save(copy);
 
 			if (copy.getOwner() != null) {
-				messagingTemplate.convertAndSend("/topic/diet/" + copy.getOwner().getId(), "REFRESH_REQUIRED");
+				Long copyOwnerId = copy.getOwner().getId();
+				transactionalEvents.afterCommit(
+						() -> messagingTemplate.convertAndSend("/topic/diet/" + copyOwnerId, "REFRESH_REQUIRED"));
 			}
 		}
 	}

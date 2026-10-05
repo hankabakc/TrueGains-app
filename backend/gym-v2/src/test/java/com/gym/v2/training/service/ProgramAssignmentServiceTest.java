@@ -5,12 +5,15 @@ import com.gym.v2.auth.repository.AppUserRepository;
 import com.gym.v2.auth.repository.ClientRepository;
 import com.gym.v2.core.exception.BadRequestException;
 import com.gym.v2.core.exception.NotFoundException;
+import com.gym.v2.core.service.TransactionalEvents;
 import com.gym.v2.training.repository.TrainingBlockRepository;
 import com.gym.v2.auth.entity.AppUser;
 import com.gym.v2.training.entity.TrainingBlock;
 import java.time.LocalDate;
 import java.util.List;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -24,6 +27,7 @@ import org.springframework.messaging.simp.SimpMessagingTemplate;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -59,7 +63,7 @@ class ProgramAssignmentServiceTest {
 	void setUp() {
 		Clock fixedClock = Clock.fixed(Instant.parse("2026-01-01T00:00:00Z"), ZoneOffset.UTC);
 		service = new ProgramAssignmentService(blockRepository, clientRepository, trainingBlockService, userRepository,
-				messagingTemplate, fixedClock);
+				messagingTemplate, fixedClock, new TransactionalEvents());
 	}
 
 	private ClientEntity clientLinkedTo(Long coachId) {
@@ -175,6 +179,26 @@ class ProgramAssignmentServiceTest {
 		service.unassignProgramFromStudent(7L, 100L, 50L);
 
 		verify(blockRepository).delete(copy);
+	}
+
+	@Test
+	void unassign_notifiesStudentOnlyAfterCommit() {
+		TrainingBlock template = templateOf(100L, 7L, "Push Pull Legs");
+		TrainingBlock copy = assignedCopy(201L, 7L, 50L, "Push Pull Legs");
+
+		when(blockRepository.findById(100L)).thenReturn(Optional.of(template));
+		when(blockRepository.findByTemplateIdAndIsTemplateFalse(100L)).thenReturn(List.of(copy));
+
+		TransactionSynchronizationManager.initSynchronization();
+		try {
+			service.unassignProgramFromStudent(7L, 100L, 50L);
+			verify(messagingTemplate, never()).convertAndSend(anyString(), any(Object.class));
+			TransactionSynchronizationManager.getSynchronizations().forEach(TransactionSynchronization::afterCommit);
+			verify(messagingTemplate).convertAndSend("/topic/training/50", "REFRESH_REQUIRED");
+		}
+		finally {
+			TransactionSynchronizationManager.clearSynchronization();
+		}
 	}
 
 }

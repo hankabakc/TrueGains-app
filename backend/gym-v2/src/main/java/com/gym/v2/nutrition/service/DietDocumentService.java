@@ -4,6 +4,7 @@ import com.gym.v2.auth.entity.AppUser;
 import com.gym.v2.core.exception.BadRequestException;
 import com.gym.v2.core.exception.ConflictException;
 import com.gym.v2.core.exception.NotFoundException;
+import com.gym.v2.core.security.service.AuditLogService;
 import com.gym.v2.core.security.service.UserContextService;
 import com.gym.v2.nutrition.dto.DietProgramDocumentRequest;
 import com.gym.v2.nutrition.dto.DietProgramResponse;
@@ -14,7 +15,6 @@ import com.gym.v2.nutrition.entity.Meal;
 import com.gym.v2.nutrition.entity.MealIngredient;
 import com.gym.v2.nutrition.entity.Recipe;
 import com.gym.v2.nutrition.repository.DietProgramRepository;
-import com.gym.v2.nutrition.repository.FoodRepository;
 import com.gym.v2.nutrition.repository.RecipeRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -35,7 +35,7 @@ public class DietDocumentService {
 
 	private final DietProgramRepository programRepository;
 
-	private final FoodRepository foodRepository;
+	private final FoodService foodService;
 
 	private final RecipeRepository recipeRepository;
 
@@ -47,16 +47,19 @@ public class DietDocumentService {
 
 	private final Clock clock;
 
-	public DietDocumentService(DietProgramRepository programRepository, FoodRepository foodRepository,
+	private final AuditLogService auditLogService;
+
+	public DietDocumentService(DietProgramRepository programRepository, FoodService foodService,
 			RecipeRepository recipeRepository, DietProgramService programService, UserContextService userContextService,
-			NutritionMapper nutritionMapper, Clock clock) {
+			NutritionMapper nutritionMapper, Clock clock, AuditLogService auditLogService) {
 		this.programRepository = programRepository;
-		this.foodRepository = foodRepository;
+		this.foodService = foodService;
 		this.recipeRepository = recipeRepository;
 		this.programService = programService;
 		this.userContextService = userContextService;
 		this.nutritionMapper = nutritionMapper;
 		this.clock = clock;
+		this.auditLogService = auditLogService;
 	}
 
 	@Transactional
@@ -85,7 +88,7 @@ public class DietDocumentService {
 		List<Long> newRecipeIds = new ArrayList<>();
 		validateDocumentStructure(request, dayMap, newFoodIds, newRecipeIds);
 
-		Map<Long, Food> foodMap = fetchFoods(newFoodIds);
+		Map<Long, Food> foodMap = foodService.findVisibleFoods(newFoodIds, currentUser);
 		Map<Long, Recipe> recipeMap = fetchRecipes(newRecipeIds);
 
 		applyDocumentChanges(program, request, dayMap, foodMap, recipeMap);
@@ -94,6 +97,8 @@ public class DietDocumentService {
 		program.onUpdate(clock.instant());
 		DietProgram saved = programRepository.saveAndFlush(program);
 		programService.handleSyncAndNotification(saved);
+		auditLogService.log("DIET_DOCUMENT_SAVED", currentUser.getEmail(),
+				"Diyet planı belge olarak kaydedildi. ID: " + saved.getId());
 		return nutritionMapper.toProgramResponse(saved, currentUser.getId());
 	}
 
@@ -106,7 +111,7 @@ public class DietDocumentService {
 			}
 		}
 
-		if (docDayIds.size() != dayMap.size() || !docDayIds.equals(dayMap.keySet())) {
+		if (!docDayIds.equals(dayMap.keySet())) {
 			throw new BadRequestException("Belge programın günlerini birebir içermeli.");
 		}
 
@@ -119,7 +124,10 @@ public class DietDocumentService {
 
 			Set<Long> docMealIds = new HashSet<>();
 			for (DietProgramDocumentRequest.MealDoc mealDoc : dayDoc.meals()) {
-				if (!docMealIds.add(mealDoc.id()) || !mealMap.containsKey(mealDoc.id())) {
+				if (!docMealIds.add(mealDoc.id())) {
+					throw new BadRequestException("Öğün belgede birden fazla kez geçiyor: " + mealDoc.id());
+				}
+				if (!mealMap.containsKey(mealDoc.id())) {
 					throw new BadRequestException("Öğün bu güne ait değil: " + mealDoc.id());
 				}
 
@@ -142,7 +150,10 @@ public class DietDocumentService {
 		Set<Long> docIngIds = new HashSet<>();
 		for (DietProgramDocumentRequest.IngredientDoc ingDoc : mealDoc.ingredients()) {
 			if (ingDoc.id() != null) {
-				if (!docIngIds.add(ingDoc.id()) || !ingMap.containsKey(ingDoc.id())) {
+				if (!docIngIds.add(ingDoc.id())) {
+					throw new BadRequestException("Besin kaydı belgede birden fazla kez geçiyor: " + ingDoc.id());
+				}
+				if (!ingMap.containsKey(ingDoc.id())) {
 					throw new BadRequestException("Besin kaydı bu öğüne ait değil: " + ingDoc.id());
 				}
 			}
@@ -160,22 +171,6 @@ public class DietDocumentService {
 				}
 			}
 		}
-	}
-
-	private Map<Long, Food> fetchFoods(List<Long> newFoodIds) {
-		Map<Long, Food> foodMap = new HashMap<>();
-		if (!newFoodIds.isEmpty()) {
-			List<Food> foods = foodRepository.findAllById(newFoodIds);
-			for (Food f : foods) {
-				foodMap.put(f.getId(), f);
-			}
-			for (Long fid : newFoodIds) {
-				if (!foodMap.containsKey(fid)) {
-					throw new NotFoundException("Besin bulunamadı: " + fid);
-				}
-			}
-		}
-		return foodMap;
 	}
 
 	private Map<Long, Recipe> fetchRecipes(List<Long> newRecipeIds) {

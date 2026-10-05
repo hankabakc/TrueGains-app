@@ -1,11 +1,13 @@
 package com.gym.v2.nutrition.service;
 
 import com.gym.v2.auth.entity.AppUser;
+import com.gym.v2.auth.entity.UserRole;
 import com.gym.v2.auth.repository.ClientRepository;
 import com.gym.v2.core.exception.BadRequestException;
 import com.gym.v2.core.exception.NotFoundException;
 import com.gym.v2.core.security.service.AuditLogService;
 import com.gym.v2.core.security.service.UserContextService;
+import com.gym.v2.core.service.TransactionalEvents;
 import com.gym.v2.nutrition.dto.*;
 import com.gym.v2.nutrition.entity.*;
 import com.gym.v2.nutrition.repository.DietProgramRepository;
@@ -47,10 +49,12 @@ public class DietProgramService {
 
 	private final ClientRepository clientRepository;
 
+	private final TransactionalEvents transactionalEvents;
+
 	public DietProgramService(DietProgramRepository programRepository, UserContextService userContextService,
 			NutritionMapper nutritionMapper, AuditLogService auditLogService, Clock clock,
 			ApplicationEventPublisher eventPublisher, SimpMessagingTemplate messagingTemplate,
-			ClientRepository clientRepository) {
+			ClientRepository clientRepository, TransactionalEvents transactionalEvents) {
 		this.programRepository = programRepository;
 		this.userContextService = userContextService;
 		this.nutritionMapper = nutritionMapper;
@@ -59,6 +63,7 @@ public class DietProgramService {
 		this.eventPublisher = eventPublisher;
 		this.messagingTemplate = messagingTemplate;
 		this.clientRepository = clientRepository;
+		this.transactionalEvents = transactionalEvents;
 	}
 
 	@Transactional(readOnly = true)
@@ -164,7 +169,7 @@ public class DietProgramService {
 		applyGoals(program, request);
 
 		program.onUpdate(clock.instant());
-		DietProgram saved = programRepository.save(program);
+		DietProgram saved = programRepository.saveAndFlush(program);
 		auditLogService.log("DIET_GOALS_UPDATED", currentUser.getEmail(), "Diyet hedefleri güncellendi.");
 		handleSyncAndNotification(saved);
 		return nutritionMapper.toProgramResponse(saved, currentUser.getId());
@@ -218,7 +223,10 @@ public class DietProgramService {
 
 		program.setName(name.trim());
 		program.onUpdate(clock.instant());
-		DietProgram saved = programRepository.save(program);
+		DietProgram saved = programRepository.saveAndFlush(program);
+		auditLogService.log("DIET_PROGRAM_RENAMED", currentUser.getEmail(),
+				"Diyet programı yeniden adlandırıldı. ID: " + id);
+		handleSyncAndNotification(saved);
 		return nutritionMapper.toProgramResponse(saved, currentUser.getId());
 	}
 
@@ -240,7 +248,7 @@ public class DietProgramService {
 		boolean isOwner = program.getOwner().getId().equals(currentUser.getId());
 
 		// İşlemi yapan kişinin programı atayan koç (COACH) olup olmadığı kontrol edilir.
-		boolean isCoach = currentUser.getRole() == com.gym.v2.auth.entity.UserRole.COACH && program.getCoach() != null
+		boolean isCoach = currentUser.getRole() == UserRole.COACH && program.getCoach() != null
 				&& program.getCoach().getId().equals(currentUser.getId());
 
 		// Eğer kişi ne sahibi ne de atayan koç ise silme yetkisi yoktur.
@@ -254,7 +262,9 @@ public class DietProgramService {
 			for (DietProgram assigned : assignedPrograms) {
 				programRepository.delete(assigned);
 				if (assigned.getOwner() != null) {
-					messagingTemplate.convertAndSend("/topic/diet/" + assigned.getOwner().getId(), "REFRESH_REQUIRED");
+					Long assignedOwnerId = assigned.getOwner().getId();
+					transactionalEvents.afterCommit(() -> messagingTemplate
+						.convertAndSend("/topic/diet/" + assignedOwnerId, "REFRESH_REQUIRED"));
 				}
 			}
 			programRepository.delete(program);
@@ -324,8 +334,7 @@ public class DietProgramService {
 		// düzenlenebilir.
 		// Yasak yalnızca programı alan sporcu (CLIENT) için geçerlidir; koçun kendi
 		// programı (owner=koç, coach=null) düzenlenebilir kalmalıdır.
-		if (DietSource.COACH == program.getSource()
-				&& currentUser.getRole() == com.gym.v2.auth.entity.UserRole.CLIENT) {
+		if (DietSource.COACH == program.getSource() && currentUser.getRole() == UserRole.CLIENT) {
 			throw new BadRequestException("Antrenör tarafından hazırlanan programlarda değişiklik yapılamaz!");
 		}
 	}
@@ -367,7 +376,9 @@ public class DietProgramService {
 			// Sadece güncellemeyi yapan kişi sporcunun kendisi değilse WebSocket
 			// tetiklenir
 			if (!program.getOwner().getId().equals(currentUser.getId())) {
-				messagingTemplate.convertAndSend("/topic/diet/" + program.getOwner().getId(), "REFRESH_REQUIRED");
+				Long ownerId = program.getOwner().getId();
+				transactionalEvents
+					.afterCommit(() -> messagingTemplate.convertAndSend("/topic/diet/" + ownerId, "REFRESH_REQUIRED"));
 			}
 		}
 	}
@@ -391,7 +402,7 @@ public class DietProgramService {
 			// (TrainingBlockService.approveOrphanedProgram) bunu zaten yapıyor.
 			program.setOriginalTemplateId(null);
 			program.onUpdate(clock.instant());
-			DietProgram saved = programRepository.save(program);
+			DietProgram saved = programRepository.saveAndFlush(program);
 			return nutritionMapper.toProgramResponse(saved, currentUser.getId());
 		}
 		else {

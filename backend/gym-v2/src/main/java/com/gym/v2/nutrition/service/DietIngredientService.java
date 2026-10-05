@@ -8,21 +8,20 @@ import com.gym.v2.nutrition.dto.BulkIngredientRequest;
 import com.gym.v2.nutrition.dto.DietProgramResponse;
 import com.gym.v2.nutrition.dto.RecipeRequest;
 import com.gym.v2.nutrition.entity.*;
-import com.gym.v2.nutrition.repository.FoodRepository;
 import com.gym.v2.nutrition.repository.MealIngredientRepository;
 import com.gym.v2.nutrition.repository.MealRepository;
 import com.gym.v2.nutrition.repository.RecipeRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import com.gym.v2.nutrition.event.DietTemplateUpdatedEvent;
-import org.springframework.context.ApplicationEventPublisher;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.Clock;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * DietIngredientService - Manages meal items and ingredients (add, delete, update).
@@ -37,7 +36,7 @@ public class DietIngredientService {
 
 	private final MealIngredientRepository ingredientRepository;
 
-	private final FoodRepository foodRepository;
+	private final FoodService foodService;
 
 	private final RecipeRepository recipeRepository;
 
@@ -47,25 +46,18 @@ public class DietIngredientService {
 
 	private final NutritionMapper nutritionMapper;
 
-	private final ApplicationEventPublisher eventPublisher;
-
-	private final SimpMessagingTemplate messagingTemplate;
-
 	private final Clock clock;
 
 	public DietIngredientService(MealRepository mealRepository, MealIngredientRepository ingredientRepository,
-			FoodRepository foodRepository, RecipeRepository recipeRepository, DietProgramService programService,
-			UserContextService userContextService, NutritionMapper nutritionMapper,
-			ApplicationEventPublisher eventPublisher, SimpMessagingTemplate messagingTemplate, Clock clock) {
+			FoodService foodService, RecipeRepository recipeRepository, DietProgramService programService,
+			UserContextService userContextService, NutritionMapper nutritionMapper, Clock clock) {
 		this.mealRepository = mealRepository;
 		this.ingredientRepository = ingredientRepository;
-		this.foodRepository = foodRepository;
+		this.foodService = foodService;
 		this.recipeRepository = recipeRepository;
 		this.programService = programService;
 		this.userContextService = userContextService;
 		this.nutritionMapper = nutritionMapper;
-		this.eventPublisher = eventPublisher;
-		this.messagingTemplate = messagingTemplate;
 		this.clock = clock;
 	}
 
@@ -83,24 +75,43 @@ public class DietIngredientService {
 		// kullanıcı
 		// 10 besin ekleyip 7'sinin eklendiğini ancak sayarak fark ediyordu. Tekil uç
 		// (`addIngredient`) aynı durumların hepsinde zaten hata fırlatıyor.
+		List<Long> foodIds = new ArrayList<>();
+		List<Long> recipeIds = new ArrayList<>();
 		for (var req : requests) {
 			if (req.amount() == null || req.amount().compareTo(BigDecimal.ZERO) <= 0) {
 				throw new BadRequestException("Miktar sıfırdan büyük olmalıdır!");
 			}
-
 			if (req.recipeId() != null) {
-				Recipe recipe = recipeRepository.findById(req.recipeId())
-					.orElseThrow(() -> new NotFoundException("Tarif bulunamadı: " + req.recipeId()));
-				meal.getIngredients().add(new MealIngredient(meal, recipe, req.amount(), req.note()));
+				recipeIds.add(req.recipeId());
 			}
 			else if (req.foodId() != null) {
-				Food food = foodRepository.findById(req.foodId())
-					.orElseThrow(() -> new NotFoundException("Besin bulunamadı: " + req.foodId()));
-				meal.getIngredients()
-					.add(new MealIngredient(meal, food, req.amount(), req.note(), req.ignoreOverride()));
+				foodIds.add(req.foodId());
 			}
 			else {
 				throw new BadRequestException("Her kayıtta foodId veya recipeId zorunludur.");
+			}
+		}
+
+		Map<Long, Food> foods = foodService.findVisibleFoods(foodIds, currentUser);
+		Map<Long, Recipe> recipes = new HashMap<>();
+		for (Recipe recipe : recipeRepository.findAllById(recipeIds)) {
+			recipes.put(recipe.getId(), recipe);
+		}
+		for (Long recipeId : recipeIds) {
+			if (!recipes.containsKey(recipeId)) {
+				throw new NotFoundException("Tarif bulunamadı: " + recipeId);
+			}
+		}
+
+		for (var req : requests) {
+			if (req.recipeId() != null) {
+				meal.getIngredients()
+					.add(new MealIngredient(meal, recipes.get(req.recipeId()), req.amount(), req.note()));
+			}
+			else {
+				meal.getIngredients()
+					.add(new MealIngredient(meal, foods.get(req.foodId()), req.amount(), req.note(),
+							req.ignoreOverride()));
 			}
 		}
 
@@ -134,8 +145,7 @@ public class DietIngredientService {
 			if (foodId == null) {
 				throw new BadRequestException("foodId veya recipeId zorunludur.");
 			}
-			Food food = foodRepository.findById(foodId)
-				.orElseThrow(() -> new NotFoundException("Besin bulunamadı: " + foodId));
+			Food food = foodService.findVisibleFoods(List.of(foodId), currentUser).get(foodId);
 			ingredient = new MealIngredient(meal, food, amount, note, ignoreOverride);
 		}
 
@@ -252,20 +262,13 @@ public class DietIngredientService {
 
 	private void handleSyncAndNotification(DietProgram program) {
 		// G-76: besin değişikliği programın kendi alanına dokunmadığı için @Version
-		// ilerlemiyordu; sürüm kilidi
-		// (tek belge ucu) bu değişikliği göremezdi. Programı kirletmek sürümü artırır.
+		// ilerlemiyordu; programı kirletmek
+		// sürümü artırır. G-90: sürüm flush'ta artar — yanıt flush'tan önce kurulursa
+		// istemci eski sürümü alır ve
+		// sonraki belgesi 409 ile reddedilir.
 		program.onUpdate(clock.instant());
-		if (program.isTemplate()) {
-			eventPublisher.publishEvent(new DietTemplateUpdatedEvent(program.getId()));
-		}
-		else if (program.getOwner() != null) {
-			AppUser currentUser = userContextService.getCurrentUser();
-			// Sadece güncellemeyi yapan kişi sporcunun kendisi değilse WebSocket
-			// tetiklenir
-			if (!program.getOwner().getId().equals(currentUser.getId())) {
-				messagingTemplate.convertAndSend("/topic/diet/" + program.getOwner().getId(), "REFRESH_REQUIRED");
-			}
-		}
+		mealRepository.flush();
+		programService.handleSyncAndNotification(program);
 	}
 
 }

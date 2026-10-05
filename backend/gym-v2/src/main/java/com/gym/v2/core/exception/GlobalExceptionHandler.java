@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.springframework.context.MessageSource;
 import org.springframework.context.i18n.LocaleContextHolder;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -79,6 +80,21 @@ public class GlobalExceptionHandler {
 			jakarta.servlet.http.HttpServletRequest request) {
 		log.warn("[CONFLICT] {} {} → {}", request.getMethod(), request.getRequestURI(), ex.getMessage());
 		return ApiResponse.error(ex.getMessage(), clock.instant());
+	}
+
+	/**
+	 * G-90: iki istek aynı kaydı aynı sürümle değiştirirse ikincisinin UPDATE'i @Version
+	 * yüzünden satır bulamaz. Bu bir sürüm çakışmasıdır, sunucu hatası değil: 409 döner,
+	 * istemci planı yenileyip tekrar dener.
+	 */
+	@ExceptionHandler(OptimisticLockingFailureException.class)
+	@ResponseStatus(HttpStatus.CONFLICT)
+	public ApiResponse<Void> handleOptimisticLock(OptimisticLockingFailureException ex,
+			jakarta.servlet.http.HttpServletRequest request) {
+		log.warn("[CONFLICT] {} {} → eşzamanlı güncelleme", request.getMethod(), request.getRequestURI());
+		return ApiResponse.error(
+				"Kayıt aynı anda başka bir yerde değiştirildi; sunucudaki hâli geçerli. Yenileyip tekrar deneyin.",
+				clock.instant());
 	}
 
 	/**

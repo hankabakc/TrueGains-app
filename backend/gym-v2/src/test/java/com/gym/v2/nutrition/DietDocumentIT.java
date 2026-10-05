@@ -17,6 +17,7 @@ import com.gym.v2.nutrition.repository.FoodRepository;
 import com.gym.v2.nutrition.service.DietDocumentService;
 import com.gym.v2.nutrition.service.DietProgramService;
 import com.gym.v2.support.IntegrationTestBase;
+import com.gym.v2.core.security.service.AuditLogService;
 import com.jayway.jsonpath.JsonPath;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
@@ -26,19 +27,27 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.TestPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MvcResult;
 
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.containsString;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -61,6 +70,12 @@ class DietDocumentIT extends IntegrationTestBase {
 
 	@Autowired
 	private FoodRepository foodRepository;
+
+	@Autowired
+	private JdbcTemplate jdbcTemplate;
+
+	@MockitoBean
+	private AuditLogService auditLogService;
 
 	@PersistenceContext
 	private EntityManager entityManager;
@@ -634,6 +649,322 @@ class DietDocumentIT extends IntegrationTestBase {
 			.as("Food sorgusu findAllById ile tek SQL'de çekildiğinden fark yalnız insert ve override kadardır (%d SQL); findById olsaydı fark %d olurdu",
 					expectedDifference, expectedDifference + 3)
 			.isEqualTo(expectedDifference);
+	}
+
+	@Test
+	void piecewiseEndpoints_returnVersionMatchingDatabase() throws Exception {
+		AppUser client = createUser("doc_piecewise@test.com", UserRole.CLIENT);
+		Long programId = createProgramFor(client, "Plan Parçalı");
+		Food food = createFood("Pirinç");
+		Long ingredientId = addIngredientToFirstMeal(client, programId, food.getId(), new BigDecimal("100.00"));
+
+		// 1. Miktar güncelleme: PUT
+		// /api/v1/nutrition/diet/meals/ingredients/{id}?amount=150.00
+		MvcResult res1 = mockMvc
+			.perform(put("/api/v1/nutrition/diet/meals/ingredients/" + ingredientId).param("amount", "150.00")
+				.header("Authorization", bearerTokenFor(client)))
+			.andExpect(status().isOk())
+			.andReturn();
+		Number respVersion1 = JsonPath.read(res1.getResponse().getContentAsString(), "$.data.version");
+		entityManager.flush();
+		entityManager.clear();
+		assertThat(respVersion1.longValue()).isEqualTo(loadProgram(programId).getVersion());
+
+		// 2. Yeniden adlandırma: PUT /api/v1/nutrition/diet/{id}/rename?name=Yeni Ad
+		MvcResult res2 = mockMvc
+			.perform(put("/api/v1/nutrition/diet/" + programId + "/rename").param("name", "Yeni Ad")
+				.header("Authorization", bearerTokenFor(client)))
+			.andExpect(status().isOk())
+			.andReturn();
+		Number respVersion2 = JsonPath.read(res2.getResponse().getContentAsString(), "$.data.version");
+		entityManager.flush();
+		entityManager.clear();
+		assertThat(respVersion2.longValue()).isEqualTo(loadProgram(programId).getVersion());
+
+		// 3. Hedef güncelleme: PUT /api/v1/nutrition/diet/{id}/goals
+		String goalsJson = """
+				{
+					"targetCalories": 2100,
+					"targetProtein": 150,
+					"targetCarbs": 200,
+					"targetFat": 70
+				}
+				""";
+		MvcResult res3 = mockMvc
+			.perform(put("/api/v1/nutrition/diet/" + programId + "/goals")
+				.header("Authorization", bearerTokenFor(client))
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(goalsJson))
+			.andExpect(status().isOk())
+			.andReturn();
+		Number respVersion3 = JsonPath.read(res3.getResponse().getContentAsString(), "$.data.version");
+		entityManager.flush();
+		entityManager.clear();
+		assertThat(respVersion3.longValue()).isEqualTo(loadProgram(programId).getVersion());
+	}
+
+	private Food createPrivateFood(String name, AppUser creator) {
+		Food food = new Food(name, "g", BigDecimal.valueOf(100));
+		food.onPersist(Instant.parse("2026-01-01T00:00:00Z"));
+		food.setGlobal(false);
+		food.setCreatorId(creator.getId());
+		return foodRepository.saveAndFlush(food);
+	}
+
+	/** İlk günün ilk öğününe yeni (kimliksiz) besin kaydı eklenmiş belge. */
+	private DietProgramDocumentRequest withNewIngredientInFirstMeal(DietProgramDocumentRequest base, String editId,
+			Long foodId) {
+		List<DietProgramDocumentRequest.DayDoc> days = new ArrayList<>(base.days());
+		DietProgramDocumentRequest.DayDoc firstDay = days.get(0);
+		List<DietProgramDocumentRequest.MealDoc> meals = new ArrayList<>(firstDay.meals());
+		DietProgramDocumentRequest.MealDoc firstMeal = meals.get(0);
+		List<DietProgramDocumentRequest.IngredientDoc> ings = new ArrayList<>(firstMeal.ingredients());
+		ings.add(new DietProgramDocumentRequest.IngredientDoc(null, foodId, null, new BigDecimal("100.00"), null,
+				false));
+		meals.set(0, new DietProgramDocumentRequest.MealDoc(firstMeal.id(), ings));
+		days.set(0, new DietProgramDocumentRequest.DayDoc(firstDay.id(), meals));
+		return new DietProgramDocumentRequest(base.version(), editId, base.name(), base.goals(), days);
+	}
+
+	@Test
+	void document_whenRowChangedConcurrently_isConflictNotServerError() throws Exception {
+		AppUser client = createUser("doc_concurrent@test.com", UserRole.CLIENT);
+		Long programId = createProgramFor(client, "Plan 12");
+		DietProgram fresh = loadProgram(programId);
+		DietProgramDocumentRequest req = buildDocumentRequest(fresh, "edit-c1");
+		req = new DietProgramDocumentRequest(req.version(), req.editId(), "Plan 12 yeni", req.goals(), req.days());
+
+		jdbcTemplate.update("UPDATE diet_program SET version = version + 1 WHERE id = ?", programId);
+
+		mockMvc
+			.perform(put("/api/v1/nutrition/diet/" + programId + "/document")
+				.header("Authorization", bearerTokenFor(client))
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(objectMapper.writeValueAsString(req)))
+			.andExpect(status().isConflict())
+			.andExpect(jsonPath("$.success").value(false));
+
+		entityManager.clear();
+		DietProgram saved = loadProgram(programId);
+		assertThat(saved.getName()).isEqualTo("Plan 12");
+	}
+
+	@Test
+	void document_withAnotherUsersPrivateFood_isNotFoundAndNothingChanges() throws Exception {
+		AppUser client1 = createUser("doc_pfood1@test.com", UserRole.CLIENT);
+		AppUser client2 = createUser("doc_pfood2@test.com", UserRole.CLIENT);
+		Long programId = createProgramFor(client1, "Plan 13");
+		Food otherFood = createPrivateFood("Baska Ozel", client2);
+
+		DietProgram fresh = loadProgram(programId);
+		Long oldVer = fresh.getVersion();
+		int oldIngCount = fresh.getDietDays().get(0).getMeals().get(0).getIngredients().size();
+
+		DietProgramDocumentRequest badReq = withNewIngredientInFirstMeal(buildDocumentRequest(fresh, "edit-p1"),
+				"edit-p1", otherFood.getId());
+		mockMvc
+			.perform(put("/api/v1/nutrition/diet/" + programId + "/document")
+				.header("Authorization", bearerTokenFor(client1))
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(objectMapper.writeValueAsString(badReq)))
+			.andExpect(status().isNotFound());
+
+		entityManager.flush();
+		entityManager.clear();
+		DietProgram afterBad = loadProgram(programId);
+		assertThat(afterBad.getVersion()).isEqualTo(oldVer);
+		assertThat(afterBad.getDietDays().get(0).getMeals().get(0).getIngredients()).hasSize(oldIngCount);
+
+		// Aynı programa kendi özel besiniyle (yeni editId) -> 200, besin öğünde
+		Food myFood = createPrivateFood("Benim Ozel", client1);
+		DietProgram fresh2 = loadProgram(programId);
+		DietProgramDocumentRequest goodReq = withNewIngredientInFirstMeal(buildDocumentRequest(fresh2, "edit-p2"),
+				"edit-p2", myFood.getId());
+		mockMvc
+			.perform(put("/api/v1/nutrition/diet/" + programId + "/document")
+				.header("Authorization", bearerTokenFor(client1))
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(objectMapper.writeValueAsString(goodReq)))
+			.andExpect(status().isOk());
+
+		entityManager.flush();
+		entityManager.clear();
+		DietProgram afterGood = loadProgram(programId);
+		assertThat(afterGood.getDietDays().get(0).getMeals().get(0).getIngredients()).hasSize(oldIngCount + 1);
+	}
+
+	@Test
+	void ingredientEndpoints_withAnotherUsersPrivateFood_areNotFoundAndNothingChanges() throws Exception {
+		AppUser client1 = createUser("doc_ingp1@test.com", UserRole.CLIENT);
+		AppUser client2 = createUser("doc_ingp2@test.com", UserRole.CLIENT);
+		Long programId = createProgramFor(client1, "Plan 14");
+		Long mealId = loadProgram(programId).getDietDays().get(0).getMeals().get(0).getId();
+		Food otherFood = createPrivateFood("Diger Besin", client2);
+
+		mockMvc
+			.perform(post("/api/v1/nutrition/diet/meals/" + mealId + "/ingredients")
+				.header("Authorization", bearerTokenFor(client1))
+				.param("foodId", otherFood.getId().toString())
+				.param("amount", "100.00"))
+			.andExpect(status().isNotFound());
+
+		BulkIngredientRequest bulkReq = new BulkIngredientRequest(otherFood.getId(), null, new BigDecimal("100.00"),
+				null, false);
+		mockMvc
+			.perform(post("/api/v1/nutrition/diet/meals/" + mealId + "/ingredients/bulk")
+				.header("Authorization", bearerTokenFor(client1))
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(objectMapper.writeValueAsString(List.of(bulkReq))))
+			.andExpect(status().isNotFound());
+
+		entityManager.flush();
+		entityManager.clear();
+		Meal meal = entityManager.find(Meal.class, mealId);
+		assertThat(meal.getIngredients()).isEmpty();
+	}
+
+	@Test
+	void bulkEndpoint_addsAllRequestedAndIsAllOrNothing() throws Exception {
+		AppUser client = createUser("doc_bulk@test.com", UserRole.CLIENT);
+		Long programId = createProgramFor(client, "Plan 15");
+		Long mealId = loadProgram(programId).getDietDays().get(0).getMeals().get(0).getId();
+		Food f1 = createFood("Besin 1");
+		Food f2 = createFood("Besin 2");
+		Food f3 = createFood("Besin 3");
+
+		List<BulkIngredientRequest> reqs = List.of(
+				new BulkIngredientRequest(f1.getId(), null, new BigDecimal("100.00"), null, false),
+				new BulkIngredientRequest(f2.getId(), null, new BigDecimal("50.00"), null, false),
+				new BulkIngredientRequest(f3.getId(), null, new BigDecimal("25.00"), null, false));
+
+		mockMvc
+			.perform(post("/api/v1/nutrition/diet/meals/" + mealId + "/ingredients/bulk")
+				.header("Authorization", bearerTokenFor(client))
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(objectMapper.writeValueAsString(reqs)))
+			.andExpect(status().isOk());
+
+		entityManager.flush();
+		entityManager.clear();
+		Meal m1 = entityManager.find(Meal.class, mealId);
+		assertThat(m1.getIngredients()).hasSize(3);
+
+		Map<Long, BigDecimal> map = m1.getIngredients()
+			.stream()
+			.collect(Collectors.toMap(i -> i.getFood().getId(), MealIngredient::getAmount));
+		assertThat(map.get(f1.getId())).isEqualByComparingTo("100.00");
+		assertThat(map.get(f2.getId())).isEqualByComparingTo("50.00");
+		assertThat(map.get(f3.getId())).isEqualByComparingTo("25.00");
+
+		// Ardından [geçerli besin, 999999L] -> 404, öğünde hâlâ 3 kayıt ("veri
+		// eksilmedi")
+		List<BulkIngredientRequest> badReqs = List.of(
+				new BulkIngredientRequest(f1.getId(), null, new BigDecimal("80.00"), null, false),
+				new BulkIngredientRequest(999999L, null, new BigDecimal("80.00"), null, false));
+
+		mockMvc
+			.perform(post("/api/v1/nutrition/diet/meals/" + mealId + "/ingredients/bulk")
+				.header("Authorization", bearerTokenFor(client))
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(objectMapper.writeValueAsString(badReqs)))
+			.andExpect(status().isNotFound());
+
+		entityManager.flush();
+		entityManager.clear();
+		Meal m2 = entityManager.find(Meal.class, mealId);
+		assertThat(m2.getIngredients()).hasSize(3);
+	}
+
+	@Test
+	void document_withDuplicateDayMealOrIngredient_isBadRequestAndNothingChanges() throws Exception {
+		AppUser client = createUser("doc_dup@test.com", UserRole.CLIENT);
+		Long programId = createProgramFor(client, "Plan 16");
+		Food food = createFood("Dup Food");
+		Long ingId = addIngredientToFirstMeal(client, programId, food.getId(), new BigDecimal("100.00"));
+
+		DietProgram fresh = loadProgram(programId);
+		Long version = fresh.getVersion();
+		DietProgramDocumentRequest baseReq = buildDocumentRequest(fresh, "edit-dup1");
+
+		// (a) ilk gün iki kez
+		List<DietProgramDocumentRequest.DayDoc> dupDays = new ArrayList<>(baseReq.days());
+		dupDays.add(baseReq.days().get(0));
+		DietProgramDocumentRequest reqA = new DietProgramDocumentRequest(baseReq.version(), "edit-dupA", baseReq.name(),
+				baseReq.goals(), dupDays);
+		mockMvc
+			.perform(put("/api/v1/nutrition/diet/" + programId + "/document")
+				.header("Authorization", bearerTokenFor(client))
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(objectMapper.writeValueAsString(reqA)))
+			.andExpect(status().isBadRequest());
+
+		entityManager.flush();
+		entityManager.clear();
+		assertThat(loadProgram(programId).getVersion()).isEqualTo(version);
+
+		// (b) ilk öğün iki kez, $.message "birden fazla" içerir
+		List<DietProgramDocumentRequest.DayDoc> dupMealDays = new ArrayList<>(baseReq.days());
+		List<DietProgramDocumentRequest.MealDoc> meals = new ArrayList<>(dupMealDays.get(0).meals());
+		meals.add(meals.get(0));
+		dupMealDays.set(0, new DietProgramDocumentRequest.DayDoc(dupMealDays.get(0).id(), meals));
+		DietProgramDocumentRequest reqB = new DietProgramDocumentRequest(baseReq.version(), "edit-dupB", baseReq.name(),
+				baseReq.goals(), dupMealDays);
+		mockMvc
+			.perform(put("/api/v1/nutrition/diet/" + programId + "/document")
+				.header("Authorization", bearerTokenFor(client))
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(objectMapper.writeValueAsString(reqB)))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.message").value(containsString("birden fazla")));
+
+		entityManager.flush();
+		entityManager.clear();
+		assertThat(loadProgram(programId).getVersion()).isEqualTo(version);
+
+		// (c) mevcut bir besin kaydı iki kez, $.message "birden fazla" içerir
+		List<DietProgramDocumentRequest.DayDoc> dupIngDays = new ArrayList<>(baseReq.days());
+		List<DietProgramDocumentRequest.MealDoc> meals2 = new ArrayList<>(dupIngDays.get(0).meals());
+		List<DietProgramDocumentRequest.IngredientDoc> ings = new ArrayList<>(meals2.get(0).ingredients());
+		ings.add(ings.get(0));
+		meals2.set(0, new DietProgramDocumentRequest.MealDoc(meals2.get(0).id(), ings));
+		dupIngDays.set(0, new DietProgramDocumentRequest.DayDoc(dupIngDays.get(0).id(), meals2));
+		DietProgramDocumentRequest reqC = new DietProgramDocumentRequest(baseReq.version(), "edit-dupC", baseReq.name(),
+				baseReq.goals(), dupIngDays);
+		mockMvc
+			.perform(put("/api/v1/nutrition/diet/" + programId + "/document")
+				.header("Authorization", bearerTokenFor(client))
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(objectMapper.writeValueAsString(reqC)))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.message").value(containsString("birden fazla")));
+
+		entityManager.flush();
+		entityManager.clear();
+		assertThat(loadProgram(programId).getVersion()).isEqualTo(version);
+	}
+
+	@Test
+	void document_writesAuditLogOnce_evenWhenResent() throws Exception {
+		AppUser client = createUser("doc_audit@test.com", UserRole.CLIENT);
+		Long programId = createProgramFor(client, "Plan 17");
+		DietProgram fresh = loadProgram(programId);
+		DietProgramDocumentRequest req = buildDocumentRequest(fresh, "edit-audit");
+
+		mockMvc
+			.perform(put("/api/v1/nutrition/diet/" + programId + "/document")
+				.header("Authorization", bearerTokenFor(client))
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(objectMapper.writeValueAsString(req)))
+			.andExpect(status().isOk());
+
+		mockMvc
+			.perform(put("/api/v1/nutrition/diet/" + programId + "/document")
+				.header("Authorization", bearerTokenFor(client))
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(objectMapper.writeValueAsString(req)))
+			.andExpect(status().isOk());
+
+		verify(auditLogService, times(1)).log(eq("DIET_DOCUMENT_SAVED"), eq(client.getEmail()), anyString());
 	}
 
 }

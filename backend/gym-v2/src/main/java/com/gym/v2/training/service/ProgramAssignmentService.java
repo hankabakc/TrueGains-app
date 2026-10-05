@@ -5,6 +5,7 @@ import com.gym.v2.auth.entity.ClientEntity;
 import com.gym.v2.auth.repository.ClientRepository;
 import com.gym.v2.core.exception.BadRequestException;
 import com.gym.v2.core.exception.NotFoundException;
+import com.gym.v2.core.service.TransactionalEvents;
 import com.gym.v2.training.dto.AssignedStudentSummaryRecord;
 import com.gym.v2.training.dto.ProgramWithAssignmentsRecord;
 import com.gym.v2.training.entity.TrainingBlock;
@@ -43,15 +44,18 @@ public class ProgramAssignmentService {
 
 	private final Clock clock;
 
+	private final TransactionalEvents transactionalEvents;
+
 	public ProgramAssignmentService(TrainingBlockRepository blockRepository, ClientRepository clientRepository,
 			TrainingBlockService trainingBlockService, AppUserRepository userRepository,
-			SimpMessagingTemplate messagingTemplate, Clock clock) {
+			SimpMessagingTemplate messagingTemplate, Clock clock, TransactionalEvents transactionalEvents) {
 		this.blockRepository = blockRepository;
 		this.clientRepository = clientRepository;
 		this.trainingBlockService = trainingBlockService;
 		this.userRepository = userRepository;
 		this.messagingTemplate = messagingTemplate;
 		this.clock = clock;
+		this.transactionalEvents = transactionalEvents;
 	}
 
 	@Transactional(readOnly = true)
@@ -114,7 +118,8 @@ public class ProgramAssignmentService {
 
 	private void deleteAssignedProgramWithFallback(TrainingBlock assignedProgram, Long studentId) {
 		this.blockRepository.delete(assignedProgram);
-		this.messagingTemplate.convertAndSend("/topic/training/" + studentId, "REFRESH_REQUIRED");
+		this.transactionalEvents.afterCommit(
+				() -> this.messagingTemplate.convertAndSend("/topic/training/" + studentId, "REFRESH_REQUIRED"));
 	}
 
 	/**
