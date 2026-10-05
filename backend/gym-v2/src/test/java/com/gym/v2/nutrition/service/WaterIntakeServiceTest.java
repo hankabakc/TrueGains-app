@@ -80,7 +80,8 @@ class WaterIntakeServiceTest {
 		glass.setUser(otherUser);
 		when(glassRepository.findById(5L)).thenReturn(Optional.of(glass));
 
-		assertThatThrownBy(() -> service.deleteCustomGlass(5L)).isInstanceOf(NotFoundException.class);
+		assertThatThrownBy(() -> service.deleteCustomGlass(5L)).isInstanceOf(NotFoundException.class)
+			.hasMessage("Özel bardak bulunamadı: 5");
 
 		verify(glassRepository, never()).delete(any());
 	}
@@ -109,7 +110,8 @@ class WaterIntakeServiceTest {
 		intake.setUser(otherUser);
 		when(intakeRepository.findById(7L)).thenReturn(Optional.of(intake));
 
-		assertThatThrownBy(() -> service.deleteWaterIntake(7L)).isInstanceOf(NotFoundException.class);
+		assertThatThrownBy(() -> service.deleteWaterIntake(7L)).isInstanceOf(NotFoundException.class)
+			.hasMessage("Su kaydı bulunamadı: 7");
 
 		verify(intakeRepository, never()).delete(any());
 	}

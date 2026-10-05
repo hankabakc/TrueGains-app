@@ -20,6 +20,7 @@ import com.gym.v2.training.entity.WorkoutExercise;
 import com.gym.v2.training.repository.ExerciseRepository;
 import com.gym.v2.training.repository.TrainingBlockRepository;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -83,9 +84,9 @@ public class TrainingBlockService {
 			clientUser = userRepository.findById(request.clientId())
 				.orElseThrow(() -> new NotFoundException("Sporcu bulunamadı."));
 			var clientEntity = clientRepository.findByUserId(request.clientId())
-				.orElseThrow(() -> new BadRequestException("Hedef kullanıcı bir sporcu değil."));
+				.orElseThrow(() -> new NotFoundException("Sporcu bulunamadı."));
 			if (clientEntity.getCoachId() == null || !clientEntity.getCoachId().equals(currentUser.getId())) {
-				throw new BadRequestException("Sadece aktif öğrencilerinize program oluşturabilirsiniz.");
+				throw new NotFoundException("Sporcu bulunamadı.");
 			}
 			coachUser = currentUser;
 		}
@@ -93,7 +94,7 @@ public class TrainingBlockService {
 			clientUser = currentUser;
 		}
 		else {
-			throw new BadRequestException("Bu işlemi yalnızca antrenörler ve sporcular yapabilir.");
+			throw new AccessDeniedException("Bu işlemi yalnızca antrenörler ve sporcular yapabilir.");
 		}
 
 		// DTO'da @NotNull var, ama servis doğrudan da çağrılabildiği için burada da
@@ -148,7 +149,7 @@ public class TrainingBlockService {
 		}
 
 		if (!isAuthorized) {
-			throw new BadRequestException("Bu programı güncelleme yetkiniz yok.");
+			throw new NotFoundException("Program bulunamadı.");
 		}
 
 		// K2-09: kuyruktaki düzenleme uygulanıp yanıtı yolda kaybolursa aynı kimlikle
@@ -207,7 +208,7 @@ public class TrainingBlockService {
 					.orElse(false)));
 
 		if (!isOwner && !isCoach) {
-			throw new BadRequestException("Bu programı silme yetkiniz yok.");
+			throw new NotFoundException("Program bulunamadı.");
 		}
 
 		blockRepository.delete(block);
@@ -243,7 +244,7 @@ public class TrainingBlockService {
 	public List<TrainingBlockDTO> getCoachTemplates() {
 		AppUser currentUser = getCurrentUser();
 		if (currentUser.getRole() != UserRole.COACH) {
-			throw new BadRequestException("Bu işlemi sadece antrenörler yapabilir.");
+			throw new AccessDeniedException("Bu işlemi sadece antrenörler yapabilir.");
 		}
 		return blockRepository.findByCoachIdAndIsTemplateTrue(currentUser.getId())
 			.stream()
@@ -255,7 +256,7 @@ public class TrainingBlockService {
 	public List<TrainingBlockDTO> getCoachAssignedPrograms() {
 		AppUser currentUser = getCurrentUser();
 		if (currentUser.getRole() != UserRole.COACH) {
-			throw new BadRequestException("Bu listeye sadece antrenörler erişebilir.");
+			throw new AccessDeniedException("Bu listeye sadece antrenörler erişebilir.");
 		}
 		return blockRepository.findByCoachIdAndIsTemplateFalse(currentUser.getId())
 			.stream()
@@ -267,7 +268,7 @@ public class TrainingBlockService {
 	public TrainingBlockDTO createCoachTemplate(TrainingBlockDTO request) {
 		AppUser currentUser = getCurrentUser();
 		if (currentUser.getRole() != UserRole.COACH) {
-			throw new BadRequestException("Şablon oluşturma yetkiniz yok.");
+			throw new AccessDeniedException("Şablon oluşturma yetkiniz yok.");
 		}
 
 		TrainingBlock block = new TrainingBlock();
@@ -292,7 +293,7 @@ public class TrainingBlockService {
 
 		if (!block.getIsTemplate() || block.getCoach() == null
 				|| !block.getCoach().getId().equals(currentUser.getId())) {
-			throw new BadRequestException("Bu şablonu güncelleme yetkiniz yok.");
+			throw new NotFoundException("Şablon bulunamadı.");
 		}
 
 		block.setName(request.name());
@@ -324,7 +325,7 @@ public class TrainingBlockService {
 
 		if (!block.getIsTemplate() || block.getCoach() == null
 				|| !block.getCoach().getId().equals(currentUser.getId())) {
-			throw new BadRequestException("Bu şablonu silme yetkiniz yok.");
+			throw new NotFoundException("Şablon bulunamadı.");
 		}
 
 		blockRepository.findAssignedBlocksByTemplateId(id).forEach(assigned -> {
@@ -342,7 +343,7 @@ public class TrainingBlockService {
 	public TrainingBlockDTO assignTemplateToClient(Long templateId, Long clientId) {
 		AppUser currentUser = getCurrentUser();
 		if (currentUser.getRole() != UserRole.COACH) {
-			throw new BadRequestException("Atama işlemi sadece antrenörler tarafından yapılabilir.");
+			throw new AccessDeniedException("Atama işlemi sadece antrenörler tarafından yapılabilir.");
 		}
 
 		TrainingBlock template = blockRepository.findById(templateId)
@@ -352,13 +353,13 @@ public class TrainingBlockService {
 		// kontrolü olmadan başka bir koçun programı okunabilir hâle gelir.
 		if (!template.getIsTemplate() || template.getCoach() == null
 				|| !template.getCoach().getId().equals(currentUser.getId())) {
-			throw new BadRequestException("Geçersiz şablon veya erişim yetkiniz yok.");
+			throw new NotFoundException("Şablon bulunamadı.");
 		}
 
 		var clientEntity = clientRepository.findByUserId(clientId)
 			.orElseThrow(() -> new NotFoundException("Sporcu bulunamadı."));
 		if (clientEntity.getCoachId() == null || !clientEntity.getCoachId().equals(currentUser.getId())) {
-			throw new BadRequestException("Sadece kendi aktif öğrencilerinize program atayabilirsiniz.");
+			throw new NotFoundException("Sporcu bulunamadı.");
 		}
 
 		AppUser clientUser = userRepository.findById(clientId)
@@ -408,7 +409,7 @@ public class TrainingBlockService {
 		AppUser currentUser = getCurrentUser();
 
 		if (block.getClient() == null || !block.getClient().getId().equals(currentUser.getId())) {
-			throw new BadRequestException("Bu programı aktif etme yetkiniz yok.");
+			throw new NotFoundException("Program bulunamadı.");
 		}
 		activate(block, currentUser);
 	}
@@ -449,7 +450,7 @@ public class TrainingBlockService {
 		AppUser currentUser = getCurrentUser();
 
 		if (block.getClient() == null || !block.getClient().getId().equals(currentUser.getId())) {
-			throw new BadRequestException("Bu program üzerinde işlem yapma yetkiniz yok.");
+			throw new NotFoundException("Program bulunamadı.");
 		}
 
 		if (keep) {

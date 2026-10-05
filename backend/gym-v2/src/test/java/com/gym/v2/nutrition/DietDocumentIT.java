@@ -390,7 +390,8 @@ class DietDocumentIT extends IntegrationTestBase {
 				.header("Authorization", bearerTokenFor(other))
 				.contentType(MediaType.APPLICATION_JSON)
 				.content(objectMapper.writeValueAsString(req)))
-			.andExpect(status().isNotFound());
+			.andExpect(status().isNotFound())
+			.andExpect(jsonPath("$.message").value("Diyet programı bulunamadı: " + programId));
 
 		entityManager.flush();
 		entityManager.clear();

@@ -4,9 +4,9 @@ import com.gym.v2.auth.entity.AppUser;
 import com.gym.v2.auth.repository.AppUserRepository;
 import com.gym.v2.auth.repository.ClientRepository;
 import com.gym.v2.auth.entity.UserRole;
-import com.gym.v2.core.exception.BadRequestException;
 import com.gym.v2.core.exception.NotFoundException;
 import com.gym.v2.core.security.SecurityUtils;
+import org.springframework.security.access.AccessDeniedException;
 import com.gym.v2.training.dto.WorkoutLogDTO;
 import com.gym.v2.training.dto.WorkoutLogRequestDTO;
 import com.gym.v2.training.dto.WorkoutSessionDTO;
@@ -228,12 +228,12 @@ public class WorkoutSessionService {
 	public List<WorkoutSessionDTO> getClientWorkoutHistory(Long clientId) {
 		AppUser currentUser = getCurrentUser();
 		if (currentUser.getRole() != UserRole.COACH) {
-			throw new BadRequestException("Bu geçmişe sadece antrenörler erişebilir.");
+			throw new AccessDeniedException("Bu geçmişe sadece antrenörler erişebilir.");
 		}
 		var clientEntity = clientRepository.findByUserId(clientId)
 			.orElseThrow(() -> new NotFoundException("Sporcu bulunamadı."));
 		if (clientEntity.getCoachId() == null || !clientEntity.getCoachId().equals(currentUser.getId())) {
-			throw new BadRequestException("Sadece kendi aktif öğrencilerinizin antrenman geçmişini görebilirsiniz.");
+			throw new NotFoundException("Sporcu bulunamadı.");
 		}
 		return trainingMapper.toWorkoutSessionDTOList(workoutSessionRepository.findHistoryWithLogs(clientId));
 	}
@@ -244,7 +244,7 @@ public class WorkoutSessionService {
 		WorkoutSession session = workoutSessionRepository.findById(sessionId)
 			.orElseThrow(() -> new NotFoundException("İdman kaydı bulunamadı: " + sessionId));
 		if (!session.getUser().getId().equals(currentUser.getId())) {
-			throw new BadRequestException("Bu kayıt size ait değil.");
+			throw new NotFoundException("İdman kaydı bulunamadı: " + sessionId);
 		}
 		workoutSessionRepository.delete(session);
 	}

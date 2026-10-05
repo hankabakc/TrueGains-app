@@ -224,7 +224,8 @@ class MealLogServiceTest {
 		MealEntry foreign = new MealEntry(otherUser, NOW, MealType.OGLE_YEMEGI);
 		when(mealEntryRepository.findById(99L)).thenReturn(Optional.of(foreign));
 
-		assertThatThrownBy(() -> service.deleteMealEntry(99L)).isInstanceOf(NotFoundException.class);
+		assertThatThrownBy(() -> service.deleteMealEntry(99L)).isInstanceOf(NotFoundException.class)
+			.hasMessage("Öğün kaydı bulunamadı: 99");
 
 		verify(mealEntryRepository, never()).delete(any());
 	}
@@ -246,7 +247,8 @@ class MealLogServiceTest {
 		foreign.addItem(item);
 		when(mealItemRepository.findById(7L)).thenReturn(Optional.of(item));
 
-		assertThatThrownBy(() -> service.deleteMealItem(7L)).isInstanceOf(NotFoundException.class);
+		assertThatThrownBy(() -> service.deleteMealItem(7L)).isInstanceOf(NotFoundException.class)
+			.hasMessage("Öğün öğesi bulunamadı: 7");
 
 		verify(mealEntryRepository, never()).delete(any());
 		verify(mealEntryRepository, never()).saveAndFlush(any());

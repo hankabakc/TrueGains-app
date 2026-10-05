@@ -159,7 +159,7 @@ public class ProgramAssignmentService {
 			TrainingBlock template = this.blockRepository.findById(programId)
 				.orElseThrow(() -> new NotFoundException("Program şablonu bulunamadı."));
 			if (template.getCoach() == null || !template.getCoach().getId().equals(coachId)) {
-				throw new BadRequestException("Bu program üzerinde işlem yapma yetkiniz yok.");
+				throw new NotFoundException("Program şablonu bulunamadı.");
 			}
 
 			candidates = this.blockRepository.findByTemplateIdAndIsTemplateFalse(programId)
@@ -184,7 +184,7 @@ public class ProgramAssignmentService {
 		ClientEntity client = this.clientRepository.findByUserId(clientId)
 			.orElseThrow(() -> new NotFoundException("Sporcu kaydı bulunamadı. ID: " + clientId));
 		if (!coachId.equals(client.getCoachId())) {
-			throw new BadRequestException("Bu sporcu size atanmamış, erişim yetkiniz bulunmuyor.");
+			throw new NotFoundException("Sporcu kaydı bulunamadı. ID: " + clientId);
 		}
 		return this.blockRepository.findByClientIdAndIsActiveTrueWithFetch(clientId);
 	}

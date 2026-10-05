@@ -1,10 +1,10 @@
 package com.gym.v2.training.service;
 
 import com.gym.v2.auth.entity.AppUser;
+import com.gym.v2.auth.entity.ClientEntity;
 import com.gym.v2.auth.entity.UserRole;
 import com.gym.v2.auth.repository.AppUserRepository;
 import com.gym.v2.auth.repository.ClientRepository;
-import com.gym.v2.core.exception.BadRequestException;
 import com.gym.v2.core.exception.NotFoundException;
 import com.gym.v2.core.security.SecurityUtils;
 import com.gym.v2.training.dto.WorkoutLogDTO;
@@ -36,6 +36,7 @@ import org.mockito.Mock;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -45,6 +46,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 /**
@@ -254,7 +256,8 @@ class WorkoutSessionOwnershipTest {
 		currentUserIs(otherClient);
 		when(workoutSessionRepository.findById(50L)).thenReturn(Optional.of(session()));
 
-		assertThatThrownBy(() -> service.deleteWorkoutSession(50L)).isInstanceOf(BadRequestException.class);
+		assertThatThrownBy(() -> service.deleteWorkoutSession(50L)).isInstanceOf(NotFoundException.class)
+			.hasMessage("İdman kaydı bulunamadı: 50");
 
 		verify(workoutSessionRepository, never()).delete(any());
 	}
@@ -382,6 +385,39 @@ class WorkoutSessionOwnershipTest {
 		assertThat(captor.getValue().getTrainingBlockId()).isEqualTo(500L);
 		assertThat(captor.getValue().getWorkoutDayId()).isEqualTo(50L);
 		verify(weeklyProgressService).upsertWeeklyProgress(eq(1L), eq(500L), any());
+	}
+
+	private ClientEntity clientLinkedTo(Long coachId) {
+		ClientEntity entity = new ClientEntity();
+		entity.setCoachId(coachId);
+		return entity;
+	}
+
+	// ---------------------------------------------------------------------------
+	// KR18 Rol ve Sahiplik Doğrulamaları (G-92 Test 32-33)
+	// ---------------------------------------------------------------------------
+
+	@Test
+	void getClientWorkoutHistory_byClient_isForbidden() {
+		currentUserIs(owner);
+
+		assertThatThrownBy(() -> service.getClientWorkoutHistory(1L)).isInstanceOf(AccessDeniedException.class)
+			.hasMessage("Bu geçmişe sadece antrenörler erişebilir.");
+
+		verifyNoInteractions(workoutSessionRepository);
+	}
+
+	@Test
+	void getClientWorkoutHistory_studentOfAnotherCoach_isNotFound() {
+		AppUser coach = userWithId(2L, "koc@test.com", UserRole.COACH);
+		currentUserIs(coach);
+
+		when(clientRepository.findByUserId(1L)).thenReturn(Optional.of(clientLinkedTo(99L)));
+
+		assertThatThrownBy(() -> service.getClientWorkoutHistory(1L)).isInstanceOf(NotFoundException.class)
+			.hasMessage("Sporcu bulunamadı.");
+
+		verifyNoInteractions(workoutSessionRepository);
 	}
 
 }

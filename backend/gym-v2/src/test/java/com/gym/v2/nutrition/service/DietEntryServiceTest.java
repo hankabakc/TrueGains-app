@@ -170,7 +170,8 @@ class DietEntryServiceTest {
 		when(mealRepository.findById(55L)).thenReturn(Optional.of(plannedMealOwnedBy(someoneElse)));
 
 		assertThatThrownBy(() -> service.togglePlannedMeal(DATE, 55L, true, List.of(1L)))
-			.isInstanceOf(NotFoundException.class);
+			.isInstanceOf(NotFoundException.class)
+			.hasMessage("Programdaki öğün bulunamadı!");
 
 		verify(mealEntryRepository, never()).save(any());
 	}
@@ -183,7 +184,8 @@ class DietEntryServiceTest {
 		when(mealRepository.findById(55L)).thenReturn(Optional.of(plannedMealOwnedBy(someoneElse)));
 
 		assertThatThrownBy(() -> service.togglePlannedMeal(DATE, 55L, true, List.of(1L)))
-			.isInstanceOf(NotFoundException.class);
+			.isInstanceOf(NotFoundException.class)
+			.hasMessage("Programdaki öğün bulunamadı!");
 
 		verify(mealEntryRepository, never()).save(any());
 	}

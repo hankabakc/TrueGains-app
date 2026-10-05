@@ -231,7 +231,8 @@ class ProgramVersioningIT extends IntegrationTestBase {
 				.header("Authorization", bearerTokenFor(other))
 				.contentType(MediaType.APPLICATION_JSON)
 				.content(updateJson("Birinci", startVersion, "duzenleme-1")))
-			.andExpect(status().isBadRequest())
+			.andExpect(status().isNotFound())
+			.andExpect(jsonPath("$.message").value("Program bulunamadı."))
 			.andExpect(jsonPath("$.data.name").doesNotExist());
 		entityManager.flush();
 		entityManager.clear();

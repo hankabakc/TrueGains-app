@@ -81,7 +81,8 @@ class CoachWaterTrackingServiceTest {
 	void getStudentWaterIntake_clientAssignedToAnotherCoach_throwsAndReadsNoData() {
 		when(clientRepository.findByUserId(50L)).thenReturn(Optional.of(clientLinkedTo(7L)));
 
-		assertThatThrownBy(() -> service.getStudentWaterIntake(50L)).isInstanceOf(NotFoundException.class);
+		assertThatThrownBy(() -> service.getStudentWaterIntake(50L)).isInstanceOf(NotFoundException.class)
+			.hasMessage("Sporcu bulunamadı. ID: 50");
 
 		verify(intakeRepository, never()).getTotalIntakeByDate(any(), any());
 	}
@@ -91,7 +92,8 @@ class CoachWaterTrackingServiceTest {
 		when(clientRepository.findByUserId(50L)).thenReturn(Optional.of(clientLinkedTo(null)));
 
 		// Koçu olmayan sporcunun verisi hiçbir koça açık olmamalı.
-		assertThatThrownBy(() -> service.getStudentWaterIntake(50L)).isInstanceOf(NotFoundException.class);
+		assertThatThrownBy(() -> service.getStudentWaterIntake(50L)).isInstanceOf(NotFoundException.class)
+			.hasMessage("Sporcu bulunamadı. ID: 50");
 	}
 
 	@Test

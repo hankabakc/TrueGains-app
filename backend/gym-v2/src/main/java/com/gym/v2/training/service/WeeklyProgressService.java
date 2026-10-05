@@ -4,9 +4,9 @@ import com.gym.v2.auth.entity.AppUser;
 import com.gym.v2.auth.repository.AppUserRepository;
 import com.gym.v2.auth.repository.ClientRepository;
 import com.gym.v2.auth.entity.UserRole;
-import com.gym.v2.core.exception.BadRequestException;
 import com.gym.v2.core.exception.NotFoundException;
 import com.gym.v2.core.security.SecurityUtils;
+import org.springframework.security.access.AccessDeniedException;
 import com.gym.v2.training.dto.ExerciseProgressRecord;
 import com.gym.v2.training.dto.WeeklyProgressDTO;
 import com.gym.v2.training.dto.WeeklyHistoryItemDTO;
@@ -170,7 +170,7 @@ public class WeeklyProgressService {
 	public List<WeeklyHistoryItemDTO> getWeeklyHistoryForCurrentUser() {
 		AppUser user = getCurrentUser();
 		if (user.getRole() != UserRole.CLIENT) {
-			throw new BadRequestException("Bu bilgiye sadece sporcular erişebilir.");
+			throw new AccessDeniedException("Bu bilgiye sadece sporcular erişebilir.");
 		}
 		return getWeeklyHistory(user.getId());
 	}
@@ -179,12 +179,12 @@ public class WeeklyProgressService {
 	public List<WeeklyHistoryItemDTO> getWeeklyHistoryForCoach(Long clientId) {
 		AppUser user = getCurrentUser();
 		if (user.getRole() != UserRole.COACH) {
-			throw new BadRequestException("Bu bilgiye sadece antrenörler erişebilir.");
+			throw new AccessDeniedException("Bu bilgiye sadece antrenörler erişebilir.");
 		}
 		var client = clientRepository.findByUserId(clientId)
 			.orElseThrow(() -> new NotFoundException("Sporcu bulunamadı."));
 		if (client.getCoachId() == null || !client.getCoachId().equals(user.getId())) {
-			throw new BadRequestException("Sadece kendi aktif öğrencilerinizin ilerlemesini görebilirsiniz.");
+			throw new NotFoundException("Sporcu bulunamadı.");
 		}
 		return getWeeklyHistory(clientId);
 	}
@@ -193,7 +193,7 @@ public class WeeklyProgressService {
 	public WeeklyProgressDTO getWeeklyProgressForCurrentUser() {
 		AppUser user = getCurrentUser();
 		if (user.getRole() != UserRole.CLIENT) {
-			throw new BadRequestException("Bu bilgiye sadece sporcular erişebilir.");
+			throw new AccessDeniedException("Bu bilgiye sadece sporcular erişebilir.");
 		}
 		return getWeeklyProgress(user.getId());
 	}
@@ -202,12 +202,12 @@ public class WeeklyProgressService {
 	public WeeklyProgressDTO getWeeklyProgressForCoach(Long clientId) {
 		AppUser user = getCurrentUser();
 		if (user.getRole() != UserRole.COACH) {
-			throw new BadRequestException("Bu bilgiye sadece antrenörler erişebilir.");
+			throw new AccessDeniedException("Bu bilgiye sadece antrenörler erişebilir.");
 		}
 		var client = clientRepository.findByUserId(clientId)
 			.orElseThrow(() -> new NotFoundException("Sporcu bulunamadı."));
 		if (client.getCoachId() == null || !client.getCoachId().equals(user.getId())) {
-			throw new BadRequestException("Sadece kendi aktif öğrencilerinizin ilerlemesini görebilirsiniz.");
+			throw new NotFoundException("Sporcu bulunamadı.");
 		}
 		return getWeeklyProgress(clientId);
 	}
@@ -221,12 +221,12 @@ public class WeeklyProgressService {
 	public List<ExerciseProgressRecord> getExerciseProgressForCoach(Long clientId, Long exerciseId) {
 		AppUser user = getCurrentUser();
 		if (user.getRole() != UserRole.COACH) {
-			throw new BadRequestException("Bu bilgiye sadece antrenörler erişebilir.");
+			throw new AccessDeniedException("Bu bilgiye sadece antrenörler erişebilir.");
 		}
 		var client = clientRepository.findByUserId(clientId)
 			.orElseThrow(() -> new NotFoundException("Sporcu bulunamadı."));
 		if (client.getCoachId() == null || !client.getCoachId().equals(user.getId())) {
-			throw new BadRequestException("Sadece kendi aktif öğrencilerinizin ilerlemesini görebilirsiniz.");
+			throw new NotFoundException("Sporcu bulunamadı.");
 		}
 		return buildExerciseProgress(clientId, exerciseId);
 	}

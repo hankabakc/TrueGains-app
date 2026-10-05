@@ -5,7 +5,7 @@ import com.gym.v2.auth.entity.ClientEntity;
 import com.gym.v2.auth.entity.UserRole;
 import com.gym.v2.auth.repository.AppUserRepository;
 import com.gym.v2.auth.repository.ClientRepository;
-import com.gym.v2.core.exception.BadRequestException;
+import com.gym.v2.core.exception.NotFoundException;
 import com.gym.v2.core.security.SecurityUtils;
 import com.gym.v2.core.service.NotificationService;
 import com.gym.v2.training.dto.TrainingBlockDTO;
@@ -27,6 +27,7 @@ import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -34,6 +35,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 /**
@@ -152,7 +154,8 @@ class TrainingBlockOwnershipTest {
 		currentUserIs(otherClient);
 		when(blockRepository.findById(10L)).thenReturn(Optional.of(personalProgram()));
 
-		assertThatThrownBy(() -> service.deletePersonalProgram(10L)).isInstanceOf(BadRequestException.class);
+		assertThatThrownBy(() -> service.deletePersonalProgram(10L)).isInstanceOf(NotFoundException.class)
+			.hasMessage("Program bulunamadı.");
 
 		verify(blockRepository, never()).delete(any());
 	}
@@ -164,7 +167,8 @@ class TrainingBlockOwnershipTest {
 		// Sporcu 1, koç 2'ye bağlı; sorgulayan koç 77.
 		when(clientRepository.findByUserId(1L)).thenReturn(Optional.of(clientLinkedTo(2L)));
 
-		assertThatThrownBy(() -> service.deletePersonalProgram(10L)).isInstanceOf(BadRequestException.class);
+		assertThatThrownBy(() -> service.deletePersonalProgram(10L)).isInstanceOf(NotFoundException.class)
+			.hasMessage("Program bulunamadı.");
 
 		verify(blockRepository, never()).delete(any());
 	}
@@ -199,7 +203,8 @@ class TrainingBlockOwnershipTest {
 	void createCoachTemplate_clientRole_isRejectedAndSavesNothing() {
 		currentUserIs(owner);
 
-		assertThatThrownBy(() -> service.createCoachTemplate(requestDto())).isInstanceOf(BadRequestException.class);
+		assertThatThrownBy(() -> service.createCoachTemplate(requestDto())).isInstanceOf(AccessDeniedException.class)
+			.hasMessage("Şablon oluşturma yetkiniz yok.");
 
 		verify(blockRepository, never()).saveAndFlush(any());
 	}
@@ -213,8 +218,8 @@ class TrainingBlockOwnershipTest {
 		currentUserIs(otherCoach);
 		when(blockRepository.findById(20L)).thenReturn(Optional.of(coachTemplate()));
 
-		assertThatThrownBy(() -> service.updateCoachTemplate(20L, requestDto()))
-			.isInstanceOf(BadRequestException.class);
+		assertThatThrownBy(() -> service.updateCoachTemplate(20L, requestDto())).isInstanceOf(NotFoundException.class)
+			.hasMessage("Şablon bulunamadı.");
 
 		verify(blockRepository, never()).saveAndFlush(any());
 		// Şablon güncellemesi ona bağlı tüm sporcu programlarına yayılır; yabancı koç
@@ -228,8 +233,8 @@ class TrainingBlockOwnershipTest {
 		currentUserIs(assignedCoach);
 		when(blockRepository.findById(10L)).thenReturn(Optional.of(personalProgram()));
 
-		assertThatThrownBy(() -> service.updateCoachTemplate(10L, requestDto()))
-			.isInstanceOf(BadRequestException.class);
+		assertThatThrownBy(() -> service.updateCoachTemplate(10L, requestDto())).isInstanceOf(NotFoundException.class)
+			.hasMessage("Şablon bulunamadı.");
 
 		verify(blockRepository, never()).saveAndFlush(any());
 	}
@@ -239,7 +244,8 @@ class TrainingBlockOwnershipTest {
 		currentUserIs(otherCoach);
 		when(blockRepository.findById(20L)).thenReturn(Optional.of(coachTemplate()));
 
-		assertThatThrownBy(() -> service.deleteCoachTemplate(20L)).isInstanceOf(BadRequestException.class);
+		assertThatThrownBy(() -> service.deleteCoachTemplate(20L)).isInstanceOf(NotFoundException.class)
+			.hasMessage("Şablon bulunamadı.");
 
 		verify(blockRepository, never()).delete(any());
 	}
@@ -255,7 +261,8 @@ class TrainingBlockOwnershipTest {
 		currentUserIs(otherCoach);
 		when(blockRepository.findById(20L)).thenReturn(Optional.of(coachTemplate()));
 
-		assertThatThrownBy(() -> service.assignTemplateToClient(20L, 1L)).isInstanceOf(BadRequestException.class);
+		assertThatThrownBy(() -> service.assignTemplateToClient(20L, 1L)).isInstanceOf(NotFoundException.class)
+			.hasMessage("Şablon bulunamadı.");
 
 		verify(blockRepository, never()).save(any());
 		verify(notificationService, never()).sendPushNotification(any(), any(), any());
@@ -268,7 +275,8 @@ class TrainingBlockOwnershipTest {
 		// Sporcu 1, koç 77'ye bağlı; atamayı koç 2 deniyor.
 		when(clientRepository.findByUserId(1L)).thenReturn(Optional.of(clientLinkedTo(77L)));
 
-		assertThatThrownBy(() -> service.assignTemplateToClient(20L, 1L)).isInstanceOf(BadRequestException.class);
+		assertThatThrownBy(() -> service.assignTemplateToClient(20L, 1L)).isInstanceOf(NotFoundException.class)
+			.hasMessage("Sporcu bulunamadı.");
 
 		verify(blockRepository, never()).save(any());
 		verify(notificationService, never()).sendPushNotification(any(), any(), any());
@@ -280,7 +288,8 @@ class TrainingBlockOwnershipTest {
 		when(blockRepository.findById(20L)).thenReturn(Optional.of(coachTemplate()));
 		when(clientRepository.findByUserId(1L)).thenReturn(Optional.of(clientLinkedTo(null)));
 
-		assertThatThrownBy(() -> service.assignTemplateToClient(20L, 1L)).isInstanceOf(BadRequestException.class);
+		assertThatThrownBy(() -> service.assignTemplateToClient(20L, 1L)).isInstanceOf(NotFoundException.class)
+			.hasMessage("Sporcu bulunamadı.");
 
 		verify(blockRepository, never()).save(any());
 	}
@@ -306,7 +315,8 @@ class TrainingBlockOwnershipTest {
 		currentUserIs(otherClient);
 		when(blockRepository.findById(10L)).thenReturn(Optional.of(personalProgram()));
 
-		assertThatThrownBy(() -> service.activateProgram(10L)).isInstanceOf(BadRequestException.class);
+		assertThatThrownBy(() -> service.activateProgram(10L)).isInstanceOf(NotFoundException.class)
+			.hasMessage("Program bulunamadı.");
 
 		// Reddedilen çağrı yabancı sporcunun kendi programlarını da pasifleştirmemeli.
 		verify(blockRepository, never()).findByClientId(any());
@@ -319,7 +329,8 @@ class TrainingBlockOwnershipTest {
 		currentUserIs(assignedCoach);
 		when(blockRepository.findById(10L)).thenReturn(Optional.of(personalProgram()));
 
-		assertThatThrownBy(() -> service.activateProgram(10L)).isInstanceOf(BadRequestException.class);
+		assertThatThrownBy(() -> service.activateProgram(10L)).isInstanceOf(NotFoundException.class)
+			.hasMessage("Program bulunamadı.");
 
 		verify(blockRepository, never()).saveAndFlush(any());
 	}
@@ -350,7 +361,8 @@ class TrainingBlockOwnershipTest {
 		currentUserIs(otherClient);
 		when(blockRepository.findById(10L)).thenReturn(Optional.of(personalProgram()));
 
-		assertThatThrownBy(() -> service.approveOrphanedProgram(10L, true)).isInstanceOf(BadRequestException.class);
+		assertThatThrownBy(() -> service.approveOrphanedProgram(10L, true)).isInstanceOf(NotFoundException.class)
+			.hasMessage("Program bulunamadı.");
 
 		verify(blockRepository, never()).saveAndFlush(any());
 		verify(blockRepository, never()).delete(any());
@@ -368,6 +380,58 @@ class TrainingBlockOwnershipTest {
 
 		assertThat(block.getCoach()).isNull();
 		assertThat(block.getTemplateId()).isNull();
+	}
+
+	// ---------------------------------------------------------------------------
+	// KR18 Rol ve Sahiplik Doğrulamaları (G-92 Test 29-31)
+	// ---------------------------------------------------------------------------
+
+	@Test
+	void coachOnlyLists_byClient_areForbiddenAndReadNothing() {
+		currentUserIs(owner);
+
+		assertThatThrownBy(() -> service.getCoachTemplates()).isInstanceOf(AccessDeniedException.class)
+			.hasMessage("Bu işlemi sadece antrenörler yapabilir.");
+
+		assertThatThrownBy(() -> service.getCoachAssignedPrograms()).isInstanceOf(AccessDeniedException.class)
+			.hasMessage("Bu listeye sadece antrenörler erişebilir.");
+
+		verifyNoInteractions(blockRepository);
+	}
+
+	@Test
+	void createPersonalProgram_forNonClientOrStudentOfAnotherCoach_isNotFound() {
+		currentUserIs(assignedCoach);
+		TrainingBlockDTO request = new TrainingBlockDTO(null, "Yeni Ad", "Yeni Aciklama", null, null, 1L, null,
+				LocalDate.now(), null, null, 4, null, null, null, null, null, null, null);
+
+		// (a) Hedef kullanıcı bir sporcu değil (clientRepository'de kaydı yok)
+		when(userRepository.findById(1L)).thenReturn(Optional.of(owner));
+		when(clientRepository.findByUserId(1L)).thenReturn(Optional.empty());
+
+		assertThatThrownBy(() -> service.createPersonalProgram(request)).isInstanceOf(NotFoundException.class)
+			.hasMessage("Sporcu bulunamadı.");
+
+		// (b) Hedef sporcu başka bir koça bağlı (koçu 99L, mevcut koç 2L)
+		when(clientRepository.findByUserId(1L)).thenReturn(Optional.of(clientLinkedTo(99L)));
+
+		assertThatThrownBy(() -> service.createPersonalProgram(request)).isInstanceOf(NotFoundException.class)
+			.hasMessage("Sporcu bulunamadı.");
+
+		verify(blockRepository, never()).save(any());
+		verify(blockRepository, never()).saveAndFlush(any());
+	}
+
+	@Test
+	void createPersonalProgram_byAdmin_isForbidden() {
+		AppUser admin = userWithId(55L, "admin@test.com", UserRole.ADMIN);
+		currentUserIs(admin);
+
+		assertThatThrownBy(() -> service.createPersonalProgram(requestDto())).isInstanceOf(AccessDeniedException.class)
+			.hasMessage("Bu işlemi yalnızca antrenörler ve sporcular yapabilir.");
+
+		verify(blockRepository, never()).save(any());
+		verify(blockRepository, never()).saveAndFlush(any());
 	}
 
 }

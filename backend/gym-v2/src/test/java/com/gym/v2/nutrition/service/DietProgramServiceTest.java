@@ -115,7 +115,8 @@ class DietProgramServiceTest {
 		currentUserIs(outsider);
 		when(programRepository.findById(10L)).thenReturn(Optional.of(program()));
 
-		assertThatThrownBy(() -> service.getProgram(10L)).isInstanceOf(NotFoundException.class);
+		assertThatThrownBy(() -> service.getProgram(10L)).isInstanceOf(NotFoundException.class)
+			.hasMessage("Diyet programı bulunamadı: 10");
 
 		// Yabancı kullanıcıya program verisi hiç hazırlanmamalı.
 		verify(nutritionMapper, never()).toProgramResponse(any(), any());
@@ -158,7 +159,8 @@ class DietProgramServiceTest {
 		when(programRepository.findById(10L)).thenReturn(Optional.of(program()));
 
 		// Aktif programı seçmek sporcunun kendi kararıdır; koç zorlayamaz.
-		assertThatThrownBy(() -> service.activateProgram(10L)).isInstanceOf(NotFoundException.class);
+		assertThatThrownBy(() -> service.activateProgram(10L)).isInstanceOf(NotFoundException.class)
+			.hasMessage("Diyet programı bulunamadı: 10");
 
 		verify(programRepository, never()).save(any());
 	}
@@ -185,7 +187,8 @@ class DietProgramServiceTest {
 		currentUserIs(outsider);
 		when(programRepository.findById(10L)).thenReturn(Optional.of(program()));
 
-		assertThatThrownBy(() -> service.deleteProgram(10L)).isInstanceOf(NotFoundException.class);
+		assertThatThrownBy(() -> service.deleteProgram(10L)).isInstanceOf(NotFoundException.class)
+			.hasMessage("Diyet programı bulunamadı: 10");
 
 		verify(programRepository, never()).delete(any());
 	}
@@ -197,7 +200,8 @@ class DietProgramServiceTest {
 		when(programRepository.findById(10L)).thenReturn(Optional.of(program()));
 
 		// COACH rolüne sahip olmak yetmez; programı atayan koç olmak gerekir.
-		assertThatThrownBy(() -> service.deleteProgram(10L)).isInstanceOf(NotFoundException.class);
+		assertThatThrownBy(() -> service.deleteProgram(10L)).isInstanceOf(NotFoundException.class)
+			.hasMessage("Diyet programı bulunamadı: 10");
 
 		verify(programRepository, never()).delete(any());
 	}
@@ -211,7 +215,8 @@ class DietProgramServiceTest {
 		currentUserIs(outsider);
 		when(programRepository.findById(10L)).thenReturn(Optional.of(program()));
 
-		assertThatThrownBy(() -> service.approveOrphanedDietProgram(10L, true)).isInstanceOf(NotFoundException.class);
+		assertThatThrownBy(() -> service.approveOrphanedDietProgram(10L, true)).isInstanceOf(NotFoundException.class)
+			.hasMessage("Diyet programı bulunamadı: 10");
 
 		verify(programRepository, never()).delete(any());
 	}

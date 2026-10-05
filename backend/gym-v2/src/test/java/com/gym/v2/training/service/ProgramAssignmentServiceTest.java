@@ -77,7 +77,8 @@ class ProgramAssignmentServiceTest {
 		// Sporcu koç 7'ye bağlı; koç 2 sorguluyor.
 		when(clientRepository.findByUserId(50L)).thenReturn(Optional.of(clientLinkedTo(7L)));
 
-		assertThatThrownBy(() -> service.getAssignedProgramsForClient(2L, 50L)).isInstanceOf(BadRequestException.class);
+		assertThatThrownBy(() -> service.getAssignedProgramsForClient(2L, 50L)).isInstanceOf(NotFoundException.class)
+			.hasMessage("Sporcu kaydı bulunamadı. ID: 50");
 
 		verify(blockRepository, never()).findByClientIdAndIsActiveTrueWithFetch(any());
 	}
@@ -86,7 +87,8 @@ class ProgramAssignmentServiceTest {
 	void getAssignedProgramsForClient_clientWithoutCoach_isRejected() {
 		when(clientRepository.findByUserId(50L)).thenReturn(Optional.of(clientLinkedTo(null)));
 
-		assertThatThrownBy(() -> service.getAssignedProgramsForClient(2L, 50L)).isInstanceOf(BadRequestException.class);
+		assertThatThrownBy(() -> service.getAssignedProgramsForClient(2L, 50L)).isInstanceOf(NotFoundException.class)
+			.hasMessage("Sporcu kaydı bulunamadı. ID: 50");
 	}
 
 	@Test
