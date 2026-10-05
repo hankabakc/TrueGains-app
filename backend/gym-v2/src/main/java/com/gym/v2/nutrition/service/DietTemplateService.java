@@ -74,7 +74,8 @@ public class DietTemplateService {
 		}
 		List<DietProgram> templates = programRepository
 			.findByOwnerIdAndTemplateTrueOrderByCreatedAtDesc(currentUser.getId());
-		return templates.stream().map(p -> nutritionMapper.toProgramResponse(p, currentUser.getId())).toList();
+		UserOverrides overrides = new UserOverrides(currentUser.getId());
+		return templates.stream().map(p -> nutritionMapper.programResponse(p, overrides)).toList();
 	}
 
 	@Transactional

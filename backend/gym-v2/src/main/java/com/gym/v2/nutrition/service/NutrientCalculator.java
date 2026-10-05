@@ -7,6 +7,7 @@ import com.gym.v2.nutrition.entity.MealEntry;
 import com.gym.v2.nutrition.entity.RecipeIngredient;
 import com.gym.v2.nutrition.entity.MealIngredient;
 import com.gym.v2.nutrition.entity.MealTemplateIngredient;
+import com.gym.v2.nutrition.entity.UserFoodOverride;
 import com.gym.v2.nutrition.dto.RecipeResponse;
 import com.gym.v2.nutrition.dto.RecipeIngredientResponse;
 import com.gym.v2.nutrition.dto.NutrientSummary;
@@ -18,6 +19,7 @@ import org.springframework.stereotype.Component;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Beslenme modülü için merkezi hesaplama motoru. Gram (Yemek) ve Porsiyon (Tarif)
@@ -41,18 +43,18 @@ public class NutrientCalculator {
 	/**
 	 * MapStruct için merkezi Ingredient mapping metodu (MealIngredient).
 	 */
-	public MealIngredientResponse toIngredientResponse(MealIngredient ingredient, @Context Long userId) {
+	public MealIngredientResponse toIngredientResponse(MealIngredient ingredient, @Context UserOverrides overrides) {
 		if (ingredient == null) {
 			return null;
 		}
 
 		if (ingredient.getFood() != null) {
 			return calculateIngredientResponse(ingredient.getId(), ingredient.getFood(), ingredient.getAmount(),
-					ingredient.isIgnoreOverride(), userId);
+					ingredient.isIgnoreOverride(), overrides);
 		}
 		else if (ingredient.getRecipe() != null) {
 			return calculateRecipeIngredientResponse(ingredient.getId(), ingredient.getRecipe(), ingredient.getAmount(),
-					userId);
+					overrides);
 		}
 		return null;
 	}
@@ -60,18 +62,19 @@ public class NutrientCalculator {
 	/**
 	 * MapStruct için merkezi Ingredient mapping metodu (MealTemplateIngredient).
 	 */
-	public MealIngredientResponse toIngredientResponse(MealTemplateIngredient ingredient, @Context Long userId) {
+	public MealIngredientResponse toIngredientResponse(MealTemplateIngredient ingredient,
+			@Context UserOverrides overrides) {
 		if (ingredient == null) {
 			return null;
 		}
 
 		if (ingredient.getFood() != null) {
 			return calculateIngredientResponse(ingredient.getId(), ingredient.getFood(), ingredient.getAmount(),
-					ingredient.isIgnoreOverride(), userId);
+					ingredient.isIgnoreOverride(), overrides);
 		}
 		else if (ingredient.getRecipe() != null) {
 			return calculateRecipeIngredientResponse(ingredient.getId(), ingredient.getRecipe(), ingredient.getAmount(),
-					userId);
+					overrides);
 		}
 		return null;
 	}
@@ -105,7 +108,7 @@ public class NutrientCalculator {
 	}
 
 	private MealIngredientResponse calculateIngredientResponse(Long id, Food food, BigDecimal amount,
-			boolean ignoreOverride, Long userId) {
+			boolean ignoreOverride, UserOverrides overrides) {
 		BigDecimal ratio = calculateFoodNutrientRatio(food, amount);
 
 		if (ignoreOverride) {
@@ -118,19 +121,22 @@ public class NutrientCalculator {
 					multiplySafely(food.getCholesterol(), ratio), null, false, !food.isGlobal());
 		}
 
-		NutrientSummary nuts = getOverriddenFoodNutrients(food, userId);
+		Optional<UserFoodOverride> overrideOpt = (overrides != null) ? overrides.find(food.getId(), overrideRepository)
+				: Optional.empty();
+		NutrientSummary nuts = extractNutrients(food, overrideOpt);
+		boolean isOverridden = overrideOpt.isPresent();
+
 		return new MealIngredientResponse(id, food.getId(), food.getName(), food.getBrand(), amount,
 				food.getDefaultAmount(), multiplySafely(nuts.protein(), ratio), multiplySafely(nuts.carbs(), ratio),
 				multiplySafely(nuts.fat(), ratio), multiplySafely(nuts.calories(), ratio), food.getBarcode() != null,
 				true, multiplySafely(nuts.sugar(), ratio), multiplySafely(nuts.fiber(), ratio),
 				multiplySafely(nuts.sodium(), ratio), multiplySafely(nuts.potassium(), ratio),
-				multiplySafely(nuts.cholesterol(), ratio), null, isFoodOverridden(food.getId(), userId),
-				!food.isGlobal());
+				multiplySafely(nuts.cholesterol(), ratio), null, isOverridden, !food.isGlobal());
 	}
 
 	private MealIngredientResponse calculateRecipeIngredientResponse(Long id, Recipe recipe, BigDecimal amount,
-			Long userId) {
-		NutrientSummary summary = calculateRecipeTotals(recipe.getIngredients(), userId);
+			UserOverrides overrides) {
+		NutrientSummary summary = calculateRecipeTotals(recipe.getIngredients(), overrides);
 		return new MealIngredientResponse(id, null, recipe.getName(), "Tarif", amount, BigDecimal.ONE,
 				multiplySafely(summary.protein(), amount), multiplySafely(summary.carbs(), amount),
 				multiplySafely(summary.fat(), amount), multiplySafely(summary.calories(), amount), false, true,
@@ -142,9 +148,9 @@ public class NutrientCalculator {
 	/**
 	 * MealItem için besin değerlerini hesaplar ve atar (Yiyecek - Gram Bazlı).
 	 */
-	public void calculateMealItemNutrients(MealItem item, Food food, Long userId) {
+	public void calculateMealItemNutrients(MealItem item, Food food, UserOverrides overrides) {
 		BigDecimal amount = item.getAmount() != null ? item.getAmount() : BigDecimal.ZERO;
-		NutrientSummary nuts = getOverriddenFoodNutrients(food, userId);
+		NutrientSummary nuts = getOverriddenFoodNutrients(food, overrides);
 
 		BigDecimal defaultAmt = (food.getDefaultAmount() == null
 				|| food.getDefaultAmount().compareTo(BigDecimal.ZERO) <= 0) ? DEFAULT_BASE_AMOUNT
@@ -166,9 +172,9 @@ public class NutrientCalculator {
 	/**
 	 * MealItem için besin değerlerini hesaplar ve atar (Tarif - Porsiyon Bazlı).
 	 */
-	public void calculateMealItemNutrients(MealItem item, Recipe recipe, Long userId) {
+	public void calculateMealItemNutrients(MealItem item, Recipe recipe, UserOverrides overrides) {
 		BigDecimal portions = item.getAmount() != null ? item.getAmount() : BigDecimal.ZERO;
-		NutrientSummary summary = calculateRecipeTotals(recipe.getIngredients(), userId);
+		NutrientSummary summary = calculateRecipeTotals(recipe.getIngredients(), overrides);
 
 		item.setCalories(multiplySafely(summary.calories(), portions));
 		item.setProtein(multiplySafely(summary.protein(), portions));
@@ -181,7 +187,7 @@ public class NutrientCalculator {
 		item.setCholesterol(multiplySafely(summary.cholesterol(), portions));
 	}
 
-	public NutrientSummary calculateRecipeTotals(List<RecipeIngredient> ingredients, Long userId) {
+	public NutrientSummary calculateRecipeTotals(List<RecipeIngredient> ingredients, UserOverrides overrides) {
 		BigDecimal prot = BigDecimal.ZERO;
 		BigDecimal carb = BigDecimal.ZERO;
 		BigDecimal fat = BigDecimal.ZERO;
@@ -194,7 +200,7 @@ public class NutrientCalculator {
 
 		for (var ing : ingredients) {
 			BigDecimal foodNutrientRatio = calculateFoodNutrientRatio(ing.getFood(), ing.getAmount());
-			NutrientSummary nutrients = getOverriddenFoodNutrients(ing.getFood(), userId);
+			NutrientSummary nutrients = getOverriddenFoodNutrients(ing.getFood(), overrides);
 
 			prot = prot.add(multiplySafely(nutrients.protein(), foodNutrientRatio));
 			carb = carb.add(multiplySafely(nutrients.carbs(), foodNutrientRatio));
@@ -209,11 +215,11 @@ public class NutrientCalculator {
 		return new NutrientSummary(prot, carb, fat, cal, sug, fib, sod, pot, chol);
 	}
 
-	public boolean isFoodOverridden(Long foodId, Long userId) {
-		if (foodId == null || userId == null) {
+	public boolean isFoodOverridden(Long foodId, UserOverrides overrides) {
+		if (foodId == null || overrides == null) {
 			return false;
 		}
-		return overrideRepository.findByUserIdAndFoodId(userId, foodId).isPresent();
+		return overrides.find(foodId, overrideRepository).isPresent();
 	}
 
 	public BigDecimal calculateFoodNutrientRatio(Food food, BigDecimal amount) {
@@ -222,7 +228,13 @@ public class NutrientCalculator {
 		return amount.divide(defAmt, 4, RoundingMode.HALF_UP);
 	}
 
-	public NutrientSummary getOverriddenFoodNutrients(Food food, Long userId) {
+	public NutrientSummary getOverriddenFoodNutrients(Food food, UserOverrides overrides) {
+		Optional<UserFoodOverride> overrideOpt = (overrides != null) ? overrides.find(food.getId(), overrideRepository)
+				: Optional.empty();
+		return extractNutrients(food, overrideOpt);
+	}
+
+	private NutrientSummary extractNutrients(Food food, Optional<UserFoodOverride> overrideOpt) {
 		BigDecimal cal = food.getCalories();
 		BigDecimal prot = food.getProtein();
 		BigDecimal carb = food.getCarbs();
@@ -233,7 +245,6 @@ public class NutrientCalculator {
 		BigDecimal chol = food.getCholesterol();
 		BigDecimal pot = food.getPotassium();
 
-		var overrideOpt = overrideRepository.findByUserIdAndFoodId(userId, food.getId());
 		if (overrideOpt.isPresent()) {
 			var ov = overrideOpt.get();
 			if (ov.getCalories() != null) {
@@ -267,18 +278,20 @@ public class NutrientCalculator {
 		return new NutrientSummary(prot, carb, fat, cal, sug, fib, sod, pot, chol);
 	}
 
-	public RecipeResponse calculateRecipeResponse(Recipe recipe, Long userId) {
-		NutrientSummary totals = calculateRecipeTotals(recipe.getIngredients(), userId);
+	public RecipeResponse calculateRecipeResponse(Recipe recipe, UserOverrides overrides) {
+		NutrientSummary totals = calculateRecipeTotals(recipe.getIngredients(), overrides);
 		return new RecipeResponse(recipe.getId(), recipe.getName(), recipe.getDescription(), recipe.getInstructions(),
 				recipe.getCategory(), recipe.getImageUrl(), recipe.getCreatedAt(),
 				recipe.getIngredients().stream().map(ing -> {
-					NutrientSummary nuts = getOverriddenFoodNutrients(ing.getFood(), userId);
+					Optional<UserFoodOverride> overrideOpt = (overrides != null)
+							? overrides.find(ing.getFood().getId(), overrideRepository) : Optional.empty();
+					NutrientSummary nuts = extractNutrients(ing.getFood(), overrideOpt);
 					BigDecimal ratio = calculateFoodNutrientRatio(ing.getFood(), ing.getAmount());
 					return new RecipeIngredientResponse(ing.getId(), ing.getFood().getId(), ing.getFood().getName(),
 							ing.getFood().getBrand(), ing.getAmount(), multiplySafely(nuts.protein(), ratio),
 							multiplySafely(nuts.carbs(), ratio), multiplySafely(nuts.fat(), ratio),
 							multiplySafely(nuts.calories(), ratio), ing.getFood().getDefaultUnit(),
-							isFoodOverridden(ing.getFood().getId(), userId));
+							overrideOpt.isPresent());
 				}).toList(), totals.calories(), totals.protein(), totals.carbs(), totals.fat());
 	}
 

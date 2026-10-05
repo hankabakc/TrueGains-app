@@ -77,7 +77,8 @@ public class DietProgramService {
 					&& (currentCoachId == null || !currentCoachId.equals(program.getCoach().getId()));
 			program.setOrphaned(orphaned);
 		}
-		return programs.stream().map(p -> nutritionMapper.toProgramResponse(p, currentUser.getId())).toList();
+		UserOverrides overrides = new UserOverrides(currentUser.getId());
+		return programs.stream().map(p -> nutritionMapper.programResponse(p, overrides)).toList();
 	}
 
 	@Transactional(readOnly = true)

@@ -31,20 +31,25 @@ public class MealTemplateService {
 
 	private final UserContextService userContextService;
 
+	private final NutritionMappingHelper nutritionMappingHelper;
+
 	public MealTemplateService(MealTemplateRepository mealTemplateRepository, UserContextService userContextService,
-			NutritionMapper nutritionMapper, FoodRepository foodRepository, RecipeRepository recipeRepository) {
+			NutritionMapper nutritionMapper, FoodRepository foodRepository, RecipeRepository recipeRepository,
+			NutritionMappingHelper nutritionMappingHelper) {
 		this.mealTemplateRepository = mealTemplateRepository;
 		this.userContextService = userContextService;
 		this.nutritionMapper = nutritionMapper;
 		this.foodRepository = foodRepository;
 		this.recipeRepository = recipeRepository;
+		this.nutritionMappingHelper = nutritionMappingHelper;
 	}
 
 	@Transactional(readOnly = true)
 	public List<MealTemplateResponse> getTemplates() {
 		AppUser currentUser = userContextService.getCurrentUser();
 		List<MealTemplate> templates = mealTemplateRepository.findAllByOwnerId(currentUser.getId());
-		return templates.stream().map(t -> nutritionMapper.toTemplateResponse(t, currentUser.getId())).toList();
+		UserOverrides overrides = new UserOverrides(currentUser.getId());
+		return templates.stream().map(t -> nutritionMapper.templateResponse(t, overrides)).toList();
 	}
 
 	@Transactional(readOnly = true)
@@ -53,7 +58,7 @@ public class MealTemplateService {
 		MealTemplate template = mealTemplateRepository.findByIdAndOwnerId(templateId, currentUser.getId())
 			.orElseThrow(() -> new RuntimeException("Şablon bulunamadı."));
 
-		return nutritionMapper.toTemplateDetailResponse(template, currentUser.getId());
+		return nutritionMappingHelper.toTemplateDetailResponse(template, new UserOverrides(currentUser.getId()));
 	}
 
 	@Transactional

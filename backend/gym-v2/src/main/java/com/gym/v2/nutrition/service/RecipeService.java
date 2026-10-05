@@ -40,6 +40,7 @@ public class RecipeService {
 
 	public List<RecipeResponse> searchRecipes(String query) {
 		AppUser currentUser = userContextService.getCurrentUser();
+		UserOverrides overrides = new UserOverrides(currentUser.getId());
 		List<RecipeResponse> results = new java.util.ArrayList<>();
 
 		List<Recipe> globalRecipes;
@@ -51,7 +52,7 @@ public class RecipeService {
 		}
 
 		for (Recipe r : globalRecipes) {
-			results.add(nutrientCalculator.calculateRecipeResponse(r, currentUser.getId()));
+			results.add(nutrientCalculator.calculateRecipeResponse(r, overrides));
 		}
 
 		return results;
@@ -61,13 +62,14 @@ public class RecipeService {
 		AppUser currentUser = userContextService.getCurrentUser();
 		Recipe recipe = recipeRepository.findById(id)
 			.orElseThrow(() -> new RuntimeException("Tarif bulunamadı: " + id));
-		return nutrientCalculator.calculateRecipeResponse(recipe, currentUser.getId());
+		return nutrientCalculator.calculateRecipeResponse(recipe, new UserOverrides(currentUser.getId()));
 	}
 
 	public List<RecipeResponse> getRecipesByCategory(String category) {
 		AppUser currentUser = userContextService.getCurrentUser();
+		UserOverrides overrides = new UserOverrides(currentUser.getId());
 		List<Recipe> recipes = recipeRepository.findByCategory(category);
-		return recipes.stream().map(r -> nutrientCalculator.calculateRecipeResponse(r, currentUser.getId())).toList();
+		return recipes.stream().map(r -> nutrientCalculator.calculateRecipeResponse(r, overrides)).toList();
 	}
 
 }

@@ -87,15 +87,14 @@ public class NutritionMappingHelper {
 				null);
 	}
 
-	@Named("toTemplateDetailResponse")
-	public MealTemplateDetailResponse toTemplateDetailResponse(MealTemplate template, @Context Long userId) {
+	public MealTemplateDetailResponse toTemplateDetailResponse(MealTemplate template, UserOverrides overrides) {
 		if (template == null) {
 			return null;
 		}
 
 		List<MealIngredientResponse> ingredients = template.getIngredients()
 			.stream()
-			.map(ing -> nutrientCalculator.toIngredientResponse(ing, userId))
+			.map(ing -> nutrientCalculator.toIngredientResponse(ing, overrides))
 			.toList();
 
 		NutrientSummary summary = nutrientCalculator.calculateTotal(ingredients);

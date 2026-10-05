@@ -137,9 +137,9 @@ class NutrientCalculatorTest {
 	@Test
 	void getOverriddenFoodNutrients_noOverride_returnsFoodValuesInCorrectFields() {
 		Food food = referenceFood();
-		when(overrideRepository.findByUserIdAndFoodId(USER_ID, 10L)).thenReturn(Optional.empty());
+		when(overrideRepository.findAllByUserId(USER_ID)).thenReturn(List.of());
 
-		NutrientSummary summary = calculator.getOverriddenFoodNutrients(food, USER_ID);
+		NutrientSummary summary = calculator.getOverriddenFoodNutrients(food, new UserOverrides(USER_ID));
 
 		// Alanların karışmadığını her biri için ayrı ayrı doğrula.
 		assertThat(summary.protein()).isEqualByComparingTo("10");
@@ -157,12 +157,13 @@ class NutrientCalculatorTest {
 	void getOverriddenFoodNutrients_partialOverride_replacesOnlyProvidedFields() {
 		Food food = referenceFood();
 		UserFoodOverride override = new UserFoodOverride();
+		override.setFood(food);
 		override.setCalories(new BigDecimal("999"));
 		override.setProtein(new BigDecimal("111"));
 		// Diğer alanlar null bırakıldı: besinin kendi değerleri korunmalı.
-		when(overrideRepository.findByUserIdAndFoodId(USER_ID, 10L)).thenReturn(Optional.of(override));
+		when(overrideRepository.findAllByUserId(USER_ID)).thenReturn(List.of(override));
 
-		NutrientSummary summary = calculator.getOverriddenFoodNutrients(food, USER_ID);
+		NutrientSummary summary = calculator.getOverriddenFoodNutrients(food, new UserOverrides(USER_ID));
 
 		assertThat(summary.calories()).isEqualByComparingTo("999");
 		assertThat(summary.protein()).isEqualByComparingTo("111");
@@ -180,9 +181,9 @@ class NutrientCalculatorTest {
 		Food food = referenceFood();
 		MealItem item = new MealItem();
 		item.setAmount(new BigDecimal("50"));
-		when(overrideRepository.findByUserIdAndFoodId(USER_ID, 10L)).thenReturn(Optional.empty());
+		when(overrideRepository.findAllByUserId(USER_ID)).thenReturn(List.of());
 
-		calculator.calculateMealItemNutrients(item, food, USER_ID);
+		calculator.calculateMealItemNutrients(item, food, new UserOverrides(USER_ID));
 
 		assertThat(item.getProtein()).isEqualByComparingTo("5");
 		assertThat(item.getCarbs()).isEqualByComparingTo("10");
@@ -200,9 +201,9 @@ class NutrientCalculatorTest {
 		Food food = referenceFood();
 		MealItem item = new MealItem();
 		item.setAmount(null);
-		when(overrideRepository.findByUserIdAndFoodId(USER_ID, 10L)).thenReturn(Optional.empty());
+		when(overrideRepository.findAllByUserId(USER_ID)).thenReturn(List.of());
 
-		calculator.calculateMealItemNutrients(item, food, USER_ID);
+		calculator.calculateMealItemNutrients(item, food, new UserOverrides(USER_ID));
 
 		assertThat(item.getCalories()).isEqualByComparingTo(BigDecimal.ZERO);
 		assertThat(item.getProtein()).isEqualByComparingTo(BigDecimal.ZERO);
@@ -222,11 +223,11 @@ class NutrientCalculatorTest {
 	@Test
 	void calculateRecipeTotals_multipleIngredients_sumsEachScaledByItsOwnAmount() {
 		Food food = referenceFood();
-		lenient().when(overrideRepository.findByUserIdAndFoodId(any(), any())).thenReturn(Optional.empty());
+		lenient().when(overrideRepository.findAllByUserId(any())).thenReturn(List.of());
 
 		// 100 g (oran 1) + 50 g (oran 0.5) = toplam 1.5 kat
-		NutrientSummary totals = calculator
-			.calculateRecipeTotals(List.of(ingredientOf(food, "100"), ingredientOf(food, "50")), USER_ID);
+		NutrientSummary totals = calculator.calculateRecipeTotals(
+				List.of(ingredientOf(food, "100"), ingredientOf(food, "50")), new UserOverrides(USER_ID));
 
 		assertThat(totals.protein()).isEqualByComparingTo("15");
 		assertThat(totals.carbs()).isEqualByComparingTo("30");
@@ -236,7 +237,7 @@ class NutrientCalculatorTest {
 
 	@Test
 	void calculateRecipeTotals_emptyIngredientList_returnsAllZeros() {
-		NutrientSummary totals = calculator.calculateRecipeTotals(List.of(), USER_ID);
+		NutrientSummary totals = calculator.calculateRecipeTotals(List.of(), new UserOverrides(USER_ID));
 
 		assertThat(totals.protein()).isEqualByComparingTo(BigDecimal.ZERO);
 		assertThat(totals.calories()).isEqualByComparingTo(BigDecimal.ZERO);

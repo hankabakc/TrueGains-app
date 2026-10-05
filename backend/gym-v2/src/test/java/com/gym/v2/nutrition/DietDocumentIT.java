@@ -634,7 +634,7 @@ class DietDocumentIT extends IntegrationTestBase {
 		documentService.saveDocument(programId1, req1);
 		entityManager.flush();
 		entityManager.clear();
-		long count1 = statistics().getPrepareStatementCount();
+		long count1 = statistics().getPrepareStatementCount() - statistics().getEntityInsertCount();
 
 		entityManager.flush();
 		entityManager.clear();
@@ -643,13 +643,9 @@ class DietDocumentIT extends IntegrationTestBase {
 		documentService.saveDocument(programId2, req2);
 		entityManager.flush();
 		entityManager.clear();
-		long count2 = statistics().getPrepareStatementCount();
+		long count2 = statistics().getPrepareStatementCount() - statistics().getEntityInsertCount();
 
-		long expectedDifference = (4 - 1) * 3;
-		assertThat(count2 - count1)
-			.as("Food sorgusu findAllById ile tek SQL'de çekildiğinden fark yalnız insert ve override kadardır (%d SQL); findById olsaydı fark %d olurdu",
-					expectedDifference, expectedDifference + 3)
-			.isEqualTo(expectedDifference);
+		assertThat(count2).isEqualTo(count1);
 	}
 
 	@Test

@@ -77,17 +77,19 @@ public class DietEntryService {
 		int dayIndex = (date.getDayOfWeek().getValue() - 1) % program.getDietDays().size();
 		DietDay dietDay = program.getDietDays().get(dayIndex);
 
-		return dietDay.getMeals().stream().map(meal -> mapToPlannedMealResponse(meal, logs, user)).toList();
+		UserOverrides overrides = new UserOverrides(user.getId());
+		return dietDay.getMeals().stream().map(meal -> mapToPlannedMealResponse(meal, logs, user, overrides)).toList();
 	}
 
-	private PlannedMealResponse mapToPlannedMealResponse(Meal meal, List<MealEntry> logs, AppUser user) {
+	private PlannedMealResponse mapToPlannedMealResponse(Meal meal, List<MealEntry> logs, AppUser user,
+			UserOverrides overrides) {
 		Optional<MealEntry> matchedLog = logs.stream()
 			.filter(l -> meal.getId().equals(l.getPlannedMealId()))
 			.findFirst();
 
 		List<MealIngredientResponse> ingredientResponses = meal.getIngredients()
 			.stream()
-			.map(ing -> nutrientCalculator.toIngredientResponse(ing, user.getId()))
+			.map(ing -> nutrientCalculator.toIngredientResponse(ing, overrides))
 			.toList();
 
 		List<Long> consumedIngredientIds = new java.util.ArrayList<>();
@@ -154,9 +156,10 @@ public class DietEntryService {
 				throw new NotFoundException("Programdaki öğün bulunamadı!");
 			}
 
+			UserOverrides overrides = new UserOverrides(user.getId());
 			for (MealIngredient ing : plannedMeal.getIngredients()) {
 				if (isValidAndSelected(ing, ingredientIds)) {
-					MealItem item = createMealItemFromIngredient(ing, entry, user.getId());
+					MealItem item = createMealItemFromIngredient(ing, entry, overrides);
 					entry.addItem(item);
 				}
 			}
@@ -191,9 +194,10 @@ public class DietEntryService {
 		MealEntry entry = new MealEntry(user, takenTime, plannedMeal.getMealType());
 		entry.setPlannedMealId(plannedMeal.getId());
 
+		UserOverrides overrides = new UserOverrides(user.getId());
 		for (MealIngredient ing : plannedMeal.getIngredients()) {
 			if (isValidAndSelected(ing, ingredientIds)) {
-				MealItem item = createMealItemFromIngredient(ing, entry, user.getId());
+				MealItem item = createMealItemFromIngredient(ing, entry, overrides);
 				entry.addItem(item);
 			}
 		}
@@ -207,7 +211,7 @@ public class DietEntryService {
 		return ingredientIds == null || ingredientIds.isEmpty() || ingredientIds.contains(ing.getId());
 	}
 
-	private MealItem createMealItemFromIngredient(MealIngredient ing, MealEntry entry, Long userId) {
+	private MealItem createMealItemFromIngredient(MealIngredient ing, MealEntry entry, UserOverrides overrides) {
 		MealItem item = new MealItem();
 		item.setMealEntry(entry);
 		item.setFood(ing.getFood());
@@ -216,10 +220,10 @@ public class DietEntryService {
 		item.setNote(ing.getNote());
 
 		if (ing.getFood() != null) {
-			nutrientCalculator.calculateMealItemNutrients(item, ing.getFood(), userId);
+			nutrientCalculator.calculateMealItemNutrients(item, ing.getFood(), overrides);
 		}
 		else {
-			nutrientCalculator.calculateMealItemNutrients(item, ing.getRecipe(), userId);
+			nutrientCalculator.calculateMealItemNutrients(item, ing.getRecipe(), overrides);
 		}
 		return item;
 	}

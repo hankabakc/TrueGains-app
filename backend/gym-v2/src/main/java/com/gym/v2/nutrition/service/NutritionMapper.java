@@ -22,13 +22,17 @@ public interface NutritionMapper {
 	@Mapping(target = "coach", source = "program.coach")
 	@Mapping(target = "version", source = "program.version")
 	@Mapping(target = "isOrphaned", source = "program.orphaned")
-	DietProgramResponse toProgramResponse(DietProgram program, @Context Long userId);
+	DietProgramResponse programResponse(DietProgram program, @Context UserOverrides overrides);
+
+	default DietProgramResponse toProgramResponse(DietProgram program, Long userId) {
+		return programResponse(program, new UserOverrides(userId));
+	}
 
 	@Mapping(target = "fullName", source = "email")
 	DietProgramResponse.CoachInfo toCoachInfo(AppUser coach);
 
 	@Mapping(target = "name", source = "meal.mealType", qualifiedByName = "getMealName")
-	MealResponse toMealResponse(Meal meal, @Context Long userId);
+	MealResponse toMealResponse(Meal meal, @Context UserOverrides overrides);
 
 	@Mapping(target = "isOverridden", source = "isOverridden")
 	@Mapping(target = "isBrandVerified", source = "isBrandVerified")
@@ -51,34 +55,11 @@ public interface NutritionMapper {
 
 	List<CustomGlassResponse> toGlassResponseList(List<CustomGlassResponse> glasses);
 
-	MealTemplateResponse toTemplateResponse(MealTemplate template, @Context Long userId);
+	MealTemplateResponse templateResponse(MealTemplate template, @Context UserOverrides overrides);
 
-	@Mapping(target = "id", source = "template.id")
-	@Mapping(target = "name",
-			expression = "java(nutritionMappingHelper.toTemplateDetailResponse(template, userId).name())")
-	@Mapping(target = "applicableMealTypes",
-			expression = "java(nutritionMappingHelper.toTemplateDetailResponse(template, userId).applicableMealTypes())")
-	@Mapping(target = "ingredients",
-			expression = "java(nutritionMappingHelper.toTemplateDetailResponse(template, userId).ingredients())")
-	@Mapping(target = "totalCalories",
-			expression = "java(nutritionMappingHelper.toTemplateDetailResponse(template, userId).totalCalories())")
-	@Mapping(target = "totalProtein",
-			expression = "java(nutritionMappingHelper.toTemplateDetailResponse(template, userId).totalProtein())")
-	@Mapping(target = "totalCarbs",
-			expression = "java(nutritionMappingHelper.toTemplateDetailResponse(template, userId).totalCarbs())")
-	@Mapping(target = "totalFat",
-			expression = "java(nutritionMappingHelper.toTemplateDetailResponse(template, userId).totalFat())")
-	@Mapping(target = "totalSugar",
-			expression = "java(nutritionMappingHelper.toTemplateDetailResponse(template, userId).totalSugar())")
-	@Mapping(target = "totalFiber",
-			expression = "java(nutritionMappingHelper.toTemplateDetailResponse(template, userId).totalFiber())")
-	@Mapping(target = "totalSodium",
-			expression = "java(nutritionMappingHelper.toTemplateDetailResponse(template, userId).totalSodium())")
-	@Mapping(target = "totalPotassium",
-			expression = "java(nutritionMappingHelper.toTemplateDetailResponse(template, userId).totalPotassium())")
-	@Mapping(target = "totalCholesterol",
-			expression = "java(nutritionMappingHelper.toTemplateDetailResponse(template, userId).totalCholesterol())")
-	MealTemplateDetailResponse toTemplateDetailResponse(MealTemplate template, @Context Long userId);
+	default MealTemplateResponse toTemplateResponse(MealTemplate template, Long userId) {
+		return templateResponse(template, new UserOverrides(userId));
+	}
 
 	@Mapping(target = "foodId", expression = "java(mealItem.getFood() != null ? "
 			+ "mealItem.getFood().getId() : (mealItem.getRecipe() != null ? " + "mealItem.getRecipe().getId() : null))")

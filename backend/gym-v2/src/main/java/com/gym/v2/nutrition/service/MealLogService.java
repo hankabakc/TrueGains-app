@@ -91,6 +91,7 @@ public class MealLogService {
 
 		// Yeni kalemleri mevcut listeye ekliyoruz (Overwrite yerine Merge stratejisi)
 		if (request.items() != null) {
+			UserOverrides overrides = new UserOverrides(user.getId());
 			for (var itemReq : request.items()) {
 				if (itemReq.amount() == null || itemReq.amount().compareTo(BigDecimal.ZERO) <= 0) {
 					continue;
@@ -112,7 +113,7 @@ public class MealLogService {
 					Food food = foodRepository.findById(itemReq.foodId())
 						.orElseThrow(() -> new NotFoundException("Besin bulunamadı: " + itemReq.foodId()));
 					mealItem.setFood(food);
-					nutrientCalculator.calculateMealItemNutrients(mealItem, food, user.getId());
+					nutrientCalculator.calculateMealItemNutrients(mealItem, food, overrides);
 				}
 				else if (itemReq.foodLocalId() != null) {
 					// G-87: internetsiz oluşturulan besin cihaz kimliğiyle bulunur;
@@ -120,13 +121,13 @@ public class MealLogService {
 					Food food = foodRepository.findByCreatorIdAndLocalId(user.getId(), itemReq.foodLocalId())
 						.orElseThrow(() -> new NotFoundException("Besin bulunamadı."));
 					mealItem.setFood(food);
-					nutrientCalculator.calculateMealItemNutrients(mealItem, food, user.getId());
+					nutrientCalculator.calculateMealItemNutrients(mealItem, food, overrides);
 				}
 				else if (recipeId != null) {
 					Recipe recipe = recipeRepository.findById(recipeId)
 						.orElseThrow(() -> new NotFoundException("Tarif bulunamadı: " + recipeId));
 					mealItem.setRecipe(recipe);
-					nutrientCalculator.calculateMealItemNutrients(mealItem, recipe, user.getId());
+					nutrientCalculator.calculateMealItemNutrients(mealItem, recipe, overrides);
 				}
 
 				entry.addItem(mealItem);
@@ -166,7 +167,7 @@ public class MealLogService {
 			.orElseThrow(() -> new NotFoundException("Besin bulunamadı: " + foodId));
 
 		MealItem item = new MealItem(entry, food, amount);
-		nutrientCalculator.calculateMealItemNutrients(item, food, currentUser.getId());
+		nutrientCalculator.calculateMealItemNutrients(item, food, new UserOverrides(currentUser.getId()));
 
 		entry.addItem(item);
 
