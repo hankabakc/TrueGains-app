@@ -1,2 +1,3 @@
 # Arayuz kodu dil istatistiginden haric; depo ana dili backend (Java) olarak gorunsun
+frontend/** linguist-vendored
 frontend/** linguist-detectable=false
